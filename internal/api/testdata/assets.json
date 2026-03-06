@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "id": "BTC",
+      "external_ids": {
+        "ccdata": "1",
+        "coingecko": "bitcoin",
+        "coinmarketcap": "1"
+      },
+      "symbol": "BTC",
+      "name": "Bitcoin",
+      "asset_type": "BLOCKCHAIN",
+      "blockchains": [],
+      "categories": [
+        "dat",
+        "efts",
+        "exchanges",
+        "expiration-futures",
+        "futures",
+        "on-chain",
+        "options",
+        "perpetual-futures",
+        "spot"
+      ],
+      "logo_url": "https://cdn.glassnode.com/images/crypto-icons/btc/btc_small.webp",
+      "semantic_tags": [
+        "layer1Token"
+      ]
+    }
+  ]
+}
