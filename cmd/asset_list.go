@@ -68,7 +68,7 @@ var assetListCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		return output.Print(format, data)
+		return output.Print(output.Options{Format: format, Data: data})
 	},
 }
 

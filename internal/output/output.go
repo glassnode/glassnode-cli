@@ -14,27 +14,42 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
-// formatTimestamp formats a Unix timestamp (seconds) for human-readable table output.
-func formatTimestamp(t int64) string {
-	return time.Unix(t, 0).UTC().Format("2006-01-02 15:04:05")
+// Options configures output formatting.
+type Options struct {
+	Format          string      // json, csv, or table
+	Data            interface{} // payload to print
+	TimestampFormat string      // for table/csv: unix, humanized, or Go layout (e.g. 2006-01-02 15:04:05)
 }
 
-// Print writes data to os.Stdout in the given format. For tests, use PrintTo with a buffer.
-func Print(format string, data interface{}) error {
-	return PrintTo(os.Stdout, format, data)
+// formatTimestamp formats a Unix timestamp (seconds). timestampFormat may be:
+// "unix" (raw seconds), "humanized" or "" (2006-01-02 15:04:05), or any Go time layout.
+func formatTimestamp(t int64, timestampFormat string) string {
+	if timestampFormat == "unix" {
+		return fmt.Sprintf("%d", t)
+	}
+	layout := "2006-01-02 15:04:05"
+	if timestampFormat != "" && timestampFormat != "humanized" {
+		layout = timestampFormat
+	}
+	return time.Unix(t, 0).UTC().Format(layout)
 }
 
-// PrintTo writes data to w in the given format. Use this in tests with a *bytes.Buffer.
-func PrintTo(w io.Writer, format string, data interface{}) error {
-	switch format {
+// Print writes data to os.Stdout according to opts. For tests, use PrintTo with a buffer.
+func Print(opts Options) error {
+	return PrintTo(os.Stdout, opts)
+}
+
+// PrintTo writes opts.Data to w in the format given by opts.
+func PrintTo(w io.Writer, opts Options) error {
+	switch opts.Format {
 	case "json":
-		return PrintJSON(w, data)
+		return PrintJSON(w, opts.Data)
 	case "csv":
-		return PrintCSV(w, data)
+		return PrintCSV(w, opts.Data, opts.TimestampFormat)
 	case "table":
-		return PrintTable(w, data)
+		return PrintTable(w, opts.Data, opts.TimestampFormat)
 	default:
-		return fmt.Errorf("unsupported output format: %s", format)
+		return fmt.Errorf("unsupported output format: %s", opts.Format)
 	}
 }
 
@@ -44,7 +59,7 @@ func PrintJSON(w io.Writer, data interface{}) error {
 	return enc.Encode(data)
 }
 
-func PrintCSV(w io.Writer, data interface{}) error {
+func PrintCSV(w io.Writer, data interface{}, timestampFormat string) error {
 	cw := csv.NewWriter(w)
 
 	write := func(record []string) error {
@@ -102,7 +117,7 @@ func PrintCSV(w io.Writer, data interface{}) error {
 				return err
 			}
 			for _, dp := range v {
-				row := []string{fmt.Sprintf("%d", dp.T)}
+				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
 					row = append(row, fmt.Sprintf("%v", dp.O[k]))
 				}
@@ -115,7 +130,7 @@ func PrintCSV(w io.Writer, data interface{}) error {
 				return err
 			}
 			for _, dp := range v {
-				if err := write([]string{fmt.Sprintf("%d", dp.T), fmt.Sprintf("%v", dp.V)}); err != nil {
+				if err := write([]string{formatTimestamp(dp.T, timestampFormat), fmt.Sprintf("%v", dp.V)}); err != nil {
 					return err
 				}
 			}
@@ -135,7 +150,7 @@ func PrintCSV(w io.Writer, data interface{}) error {
 		}
 		for _, dp := range v.Data {
 			for _, entry := range dp.Bulk {
-				row := []string{fmt.Sprintf("%d", dp.T)}
+				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
 					row = append(row, fmt.Sprintf("%v", entry[k]))
 				}
@@ -151,7 +166,7 @@ func PrintCSV(w io.Writer, data interface{}) error {
 	return cw.Error()
 }
 
-func PrintTable(w io.Writer, data interface{}) error {
+func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 	table := tablewriter.NewWriter(w)
 	table.SetAutoWrapText(false)
 	table.SetBorder(false)
@@ -191,7 +206,7 @@ func PrintTable(w io.Writer, data interface{}) error {
 			header := append([]string{"TIME"}, upperAll(keys)...)
 			table.SetHeader(header)
 			for _, dp := range v {
-				row := []string{formatTimestamp(dp.T)}
+				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
 					row = append(row, fmt.Sprintf("%v", dp.O[k]))
 				}
@@ -200,7 +215,7 @@ func PrintTable(w io.Writer, data interface{}) error {
 		} else {
 			table.SetHeader([]string{"TIME", "VALUE"})
 			for _, dp := range v {
-				table.Append([]string{formatTimestamp(dp.T), fmt.Sprintf("%v", dp.V)})
+				table.Append([]string{formatTimestamp(dp.T, timestampFormat), fmt.Sprintf("%v", dp.V)})
 			}
 		}
 	case *api.BulkResponse:
@@ -215,7 +230,7 @@ func PrintTable(w io.Writer, data interface{}) error {
 		table.SetHeader(header)
 		for _, dp := range v.Data {
 			for _, entry := range dp.Bulk {
-				row := []string{formatTimestamp(dp.T)}
+				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
 					row = append(row, fmt.Sprintf("%v", entry[k]))
 				}

@@ -42,7 +42,7 @@ var metricListCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		return output.Print(format, metrics)
+		return output.Print(output.Options{Format: format, Data: metrics})
 	},
 }
 

@@ -47,6 +47,6 @@ var assetDescribeCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		return output.Print(format, assets[0])
+		return output.Print(output.Options{Format: format, Data: assets[0]})
 	},
 }

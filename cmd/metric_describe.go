@@ -45,7 +45,7 @@ var metricDescribeCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		return output.Print(format, meta)
+		return output.Print(output.Options{Format: format, Data: meta})
 	},
 }
 

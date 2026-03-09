@@ -33,7 +33,7 @@ func init() {
 	rootCmd.PersistentFlags().String("api-key", "", "API key override")
 	rootCmd.PersistentFlags().StringP("output", "o", "json", "output format: json, csv, table")
 	rootCmd.PersistentFlags().Bool("dry-run", false, "print the request URL without executing")
-	rootCmd.PersistentFlags().String("timestamp-format", "unix", "timestamp format: unix or humanized")
+	rootCmd.PersistentFlags().String("timestamp-format", "humanized", "timestamp format: unix, humanized, or Go layout (e.g. 2006-01-02 15:04:05); applies to table/csv output")
 	rootCmd.Version = versionStr
 	rootCmd.SetVersionTemplate("gn version {{.Version}}\n")
 

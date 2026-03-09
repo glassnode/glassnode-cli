@@ -27,7 +27,7 @@ func TestPrintJSON(t *testing.T) {
 func TestPrintCSV_DataPoints(t *testing.T) {
 	var buf bytes.Buffer
 	data := []api.DataPoint{{T: 1, V: 2.0}}
-	if err := PrintCSV(&buf, data); err != nil {
+	if err := PrintCSV(&buf, data, "unix"); err != nil {
 		t.Errorf("PrintCSV: %v", err)
 	}
 	want := "t,v\n1,2\n"
@@ -39,7 +39,7 @@ func TestPrintCSV_DataPoints(t *testing.T) {
 func TestPrint_JSON(t *testing.T) {
 	var buf bytes.Buffer
 	data := []string{"x"}
-	if err := PrintTo(&buf, "json", data); err != nil {
+	if err := PrintTo(&buf, Options{Format: "json", Data: data}); err != nil {
 		t.Errorf("Print: %v", err)
 	}
 	var decoded []string
@@ -50,7 +50,7 @@ func TestPrint_JSON(t *testing.T) {
 
 func TestPrint_UnknownFormat(t *testing.T) {
 	var buf bytes.Buffer
-	err := PrintTo(&buf, "invalid", nil)
+	err := PrintTo(&buf, Options{Format: "invalid", Data: nil})
 	if err == nil {
 		t.Error("expected error for unknown format")
 	}
@@ -62,7 +62,7 @@ func TestPrint_UnknownFormat(t *testing.T) {
 func TestPrint_CSV(t *testing.T) {
 	var buf bytes.Buffer
 	data := []api.DataPoint{{T: 1, V: 2.0}}
-	if err := PrintTo(&buf, "csv", data); err != nil {
+	if err := PrintTo(&buf, Options{Format: "csv", Data: data, TimestampFormat: "unix"}); err != nil {
 		t.Errorf("Print csv: %v", err)
 	}
 	want := "t,v\n1,2\n"
@@ -74,7 +74,7 @@ func TestPrint_CSV(t *testing.T) {
 func TestPrint_Table(t *testing.T) {
 	var buf bytes.Buffer
 	data := []api.DataPoint{{T: 1, V: 2.0}}
-	if err := PrintTo(&buf, "table", data); err != nil {
+	if err := PrintTo(&buf, Options{Format: "table", Data: data}); err != nil {
 		t.Errorf("Print table: %v", err)
 	}
 	out := buf.String()
@@ -86,7 +86,7 @@ func TestPrint_Table(t *testing.T) {
 func TestPrintCSV_MetricList(t *testing.T) {
 	var buf bytes.Buffer
 	data := []string{"/market/price_usd_close", "/addresses/active_count"}
-	if err := PrintCSV(&buf, data); err != nil {
+	if err := PrintCSV(&buf, data, ""); err != nil {
 		t.Errorf("PrintCSV: %v", err)
 	}
 	out := buf.String()
@@ -98,7 +98,7 @@ func TestPrintCSV_MetricList(t *testing.T) {
 func TestPrintCSV_Assets(t *testing.T) {
 	var buf bytes.Buffer
 	data := []api.Asset{{ID: "BTC", Symbol: "BTC", Name: "Bitcoin", AssetType: "BLOCKCHAIN", Categories: []string{"on-chain"}}}
-	if err := PrintCSV(&buf, data); err != nil {
+	if err := PrintCSV(&buf, data, ""); err != nil {
 		t.Errorf("PrintCSV: %v", err)
 	}
 	out := buf.String()
@@ -110,7 +110,7 @@ func TestPrintCSV_Assets(t *testing.T) {
 func TestPrintTable_Assets(t *testing.T) {
 	var buf bytes.Buffer
 	data := []api.Asset{{ID: "BTC", Symbol: "BTC", Name: "Bitcoin", AssetType: "BLOCKCHAIN", Categories: []string{"on-chain"}}}
-	if err := PrintTable(&buf, data); err != nil {
+	if err := PrintTable(&buf, data, ""); err != nil {
 		t.Errorf("PrintTable: %v", err)
 	}
 	out := buf.String()
@@ -125,7 +125,7 @@ func TestPrintCSV_SliceOfMaps(t *testing.T) {
 		{"id": "BTC", "symbol": "BTC"},
 		{"id": "ETH", "symbol": "ETH"},
 	}
-	if err := PrintCSV(&buf, data); err != nil {
+	if err := PrintCSV(&buf, data, ""); err != nil {
 		t.Fatalf("PrintCSV: %v", err)
 	}
 	out := buf.String()
@@ -143,7 +143,7 @@ func TestPrintTable_SliceOfMaps(t *testing.T) {
 		{"id": "BTC", "symbol": "BTC"},
 		{"id": "ETH", "symbol": "ETH"},
 	}
-	if err := PrintTable(&buf, data); err != nil {
+	if err := PrintTable(&buf, data, ""); err != nil {
 		t.Fatalf("PrintTable: %v", err)
 	}
 	out := buf.String()
@@ -158,7 +158,7 @@ func TestPrintTable_SliceOfMaps(t *testing.T) {
 func TestPrintTable_MetricMetadata(t *testing.T) {
 	var buf bytes.Buffer
 	meta := &api.MetricMetadata{Path: "/market/price_usd_close", Tier: 1, BulkSupported: true}
-	if err := PrintTable(&buf, meta); err != nil {
+	if err := PrintTable(&buf, meta, ""); err != nil {
 		t.Errorf("PrintTable: %v", err)
 	}
 	out := buf.String()
@@ -175,7 +175,7 @@ func TestPrintCSV_DataPointsWithObject(t *testing.T) {
 		{T: 1, O: map[string]interface{}{"a": "x", "b": 2.0}},
 		{T: 2, O: map[string]interface{}{"a": "y", "b": 3.0}},
 	}
-	if err := PrintCSV(&buf, data); err != nil {
+	if err := PrintCSV(&buf, data, "unix"); err != nil {
 		t.Fatalf("PrintCSV: %v", err)
 	}
 	out := buf.String()
@@ -192,7 +192,7 @@ func TestPrintTable_DataPointsWithObject(t *testing.T) {
 	data := []api.DataPoint{
 		{T: 1, O: map[string]interface{}{"a": "x", "b": 2.0}},
 	}
-	if err := PrintTable(&buf, data); err != nil {
+	if err := PrintTable(&buf, data, ""); err != nil {
 		t.Fatalf("PrintTable: %v", err)
 	}
 	out := buf.String()
@@ -213,7 +213,7 @@ func TestPrintCSV_BulkResponse(t *testing.T) {
 			{T: 1738657600, Bulk: []map[string]interface{}{{"a": "BTC", "v": float64(123)}}},
 		},
 	}
-	if err := PrintCSV(&buf, resp); err != nil {
+	if err := PrintCSV(&buf, resp, ""); err != nil {
 		t.Fatalf("PrintCSV: %v", err)
 	}
 	out := buf.String()
@@ -232,7 +232,7 @@ func TestPrintTable_BulkResponse(t *testing.T) {
 			{T: 1738657600, Bulk: []map[string]interface{}{{"a": "BTC", "v": float64(123)}}},
 		},
 	}
-	if err := PrintTable(&buf, resp); err != nil {
+	if err := PrintTable(&buf, resp, ""); err != nil {
 		t.Fatalf("PrintTable: %v", err)
 	}
 	out := buf.String()
@@ -248,7 +248,7 @@ func TestPrintTable_BulkResponse(t *testing.T) {
 
 func TestPrintCSV_EmptyDataPoints(t *testing.T) {
 	var buf bytes.Buffer
-	if err := PrintCSV(&buf, []api.DataPoint{}); err != nil {
+	if err := PrintCSV(&buf, []api.DataPoint{}, ""); err != nil {
 		t.Fatalf("PrintCSV: %v", err)
 	}
 	out := buf.String()
@@ -260,7 +260,7 @@ func TestPrintCSV_EmptyDataPoints(t *testing.T) {
 
 func TestPrintTable_EmptyDataPoints(t *testing.T) {
 	var buf bytes.Buffer
-	if err := PrintTable(&buf, []api.DataPoint{}); err != nil {
+	if err := PrintTable(&buf, []api.DataPoint{}, ""); err != nil {
 		t.Fatalf("PrintTable: %v", err)
 	}
 	out := buf.String()
@@ -272,7 +272,7 @@ func TestPrintTable_EmptyDataPoints(t *testing.T) {
 
 func TestPrintCSV_EmptyStringSlice(t *testing.T) {
 	var buf bytes.Buffer
-	if err := PrintCSV(&buf, []string{}); err != nil {
+	if err := PrintCSV(&buf, []string{}, ""); err != nil {
 		t.Fatalf("PrintCSV: %v", err)
 	}
 	out := buf.String()
@@ -283,7 +283,7 @@ func TestPrintCSV_EmptyStringSlice(t *testing.T) {
 
 func TestPrintCSV_EmptyAssetSlice(t *testing.T) {
 	var buf bytes.Buffer
-	if err := PrintCSV(&buf, []api.Asset{}); err != nil {
+	if err := PrintCSV(&buf, []api.Asset{}, ""); err != nil {
 		t.Fatalf("PrintCSV: %v", err)
 	}
 	out := buf.String()
@@ -308,7 +308,7 @@ func TestPrintTable_MetricMetadataWithOptionalFields(t *testing.T) {
 		Timerange:  &api.Timerange{Min: 1609459200, Max: 1735689600},
 		Parameters: map[string][]string{"a": {"BTC", "ETH"}, "i": {"24h"}},
 	}
-	if err := PrintTable(&buf, meta); err != nil {
+	if err := PrintTable(&buf, meta, ""); err != nil {
 		t.Fatalf("PrintTable: %v", err)
 	}
 	out := buf.String()

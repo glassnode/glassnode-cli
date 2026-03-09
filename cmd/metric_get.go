@@ -86,7 +86,8 @@ var metricGetCmd = &cobra.Command{
 				return err
 			}
 			format, _ := cmd.Flags().GetString("output")
-			return output.Print(format, resp)
+			tsFmt, _ := cmd.Flags().GetString("timestamp-format")
+			return output.Print(output.Options{Format: format, Data: resp, TimestampFormat: tsFmt})
 		}
 
 		if len(assets) > 0 {
@@ -113,7 +114,8 @@ var metricGetCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		return output.Print(format, data)
+		tsFmt, _ := cmd.Flags().GetString("timestamp-format")
+		return output.Print(output.Options{Format: format, Data: data, TimestampFormat: tsFmt})
 	},
 }
 
