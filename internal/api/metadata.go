@@ -127,12 +127,19 @@ func (c *Client) ListAssets(ctx context.Context, filter string) ([]Asset, error)
 	return resp.Data, nil
 }
 
-func (c *Client) ListMetrics(ctx context.Context, asset string) ([]string, error) {
-	params := map[string]string{}
-	if asset != "" {
-		params["a"] = asset
+// ListMetrics lists available metric paths, optionally filtered by query parameters.
+// See https://docs.glassnode.com/basic-api/metadata#query-parameters-1
+// params: a (asset), c (currency), e (exchange), f (format), i (interval),
+// from_exchange, to_exchange, miner, maturity, network, period, quote_symbol.
+// repeatedParams: use key "a" for multiple assets (e.g. a=BTC&a=ETH).
+func (c *Client) ListMetrics(ctx context.Context, params map[string]string, repeatedParams map[string][]string) ([]string, error) {
+	if params == nil {
+		params = map[string]string{}
 	}
-	body, err := c.Do(ctx, "GET", "/v1/metadata/metrics", params)
+	if repeatedParams == nil {
+		repeatedParams = map[string][]string{}
+	}
+	body, err := c.DoWithRepeatedParams(ctx, "GET", "/v1/metadata/metrics", params, repeatedParams)
 	if err != nil {
 		return nil, fmt.Errorf("listing metrics: %w", err)
 	}

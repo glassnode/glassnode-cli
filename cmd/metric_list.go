@@ -19,15 +19,11 @@ var metricListCmd = &cobra.Command{
 		}
 		client := api.NewClient(apiKey)
 
-		asset, _ := cmd.Flags().GetString("asset")
+		params, repeatedParams := metricListParamsFromFlags(cmd)
 
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		if dryRun {
-			params := map[string]string{}
-			if asset != "" {
-				params["a"] = asset
-			}
-			u, err := client.BuildURL("/v1/metadata/metrics", params, nil)
+			u, err := client.BuildURL("/v1/metadata/metrics", params, repeatedParams)
 			if err != nil {
 				return err
 			}
@@ -36,7 +32,7 @@ var metricListCmd = &cobra.Command{
 			return nil
 		}
 
-		metrics, err := client.ListMetrics(cmd.Context(), asset)
+		metrics, err := client.ListMetrics(cmd.Context(), params, repeatedParams)
 		if err != nil {
 			return err
 		}
@@ -46,6 +42,71 @@ var metricListCmd = &cobra.Command{
 	},
 }
 
+func metricListParamsFromFlags(cmd *cobra.Command) (map[string]string, map[string][]string) {
+	params := map[string]string{}
+	repeatedParams := map[string][]string{}
+
+	var assets []string
+	if v, _ := cmd.Flags().GetString("asset"); v != "" {
+		assets = append(assets, v)
+	}
+	if extra, _ := cmd.Flags().GetStringArray("assets"); len(extra) > 0 {
+		assets = append(assets, extra...)
+	}
+	if len(assets) == 1 {
+		params["a"] = assets[0]
+	} else if len(assets) > 1 {
+		repeatedParams["a"] = assets
+	}
+	if v, _ := cmd.Flags().GetString("currency"); v != "" {
+		params["c"] = v
+	}
+	if v, _ := cmd.Flags().GetString("exchange"); v != "" {
+		params["e"] = v
+	}
+	if v, _ := cmd.Flags().GetString("format"); v != "" {
+		params["f"] = v
+	}
+	if v, _ := cmd.Flags().GetString("interval"); v != "" {
+		params["i"] = v
+	}
+	if v, _ := cmd.Flags().GetString("from-exchange"); v != "" {
+		params["from_exchange"] = v
+	}
+	if v, _ := cmd.Flags().GetString("to-exchange"); v != "" {
+		params["to_exchange"] = v
+	}
+	if v, _ := cmd.Flags().GetString("miner"); v != "" {
+		params["miner"] = v
+	}
+	if v, _ := cmd.Flags().GetString("maturity"); v != "" {
+		params["maturity"] = v
+	}
+	if v, _ := cmd.Flags().GetString("network"); v != "" {
+		params["network"] = v
+	}
+	if v, _ := cmd.Flags().GetString("period"); v != "" {
+		params["period"] = v
+	}
+	if v, _ := cmd.Flags().GetString("quote-symbol"); v != "" {
+		params["quote_symbol"] = v
+	}
+
+	return params, repeatedParams
+}
+
 func init() {
-	metricListCmd.Flags().StringP("asset", "a", "", "filter by asset")
+	metricListCmd.Flags().StringP("asset", "a", "", "filter by asset (single)")
+	metricListCmd.Flags().StringArray("assets", nil, "filter by assets (multiple, e.g. --assets BTC --assets ETH)")
+	metricListCmd.Flags().StringP("currency", "c", "", "filter by currency (e.g. native, usd)")
+	metricListCmd.Flags().StringP("exchange", "e", "", "filter by exchange (e.g. binance, coinbase)")
+	metricListCmd.Flags().StringP("format", "f", "", "filter by response format (e.g. json, csv)")
+	metricListCmd.Flags().StringP("interval", "i", "", "filter by time interval (e.g. 1h, 24h)")
+	metricListCmd.Flags().String("from-exchange", "", "source exchange for inter-exchange metrics")
+	metricListCmd.Flags().String("to-exchange", "", "destination exchange for inter-exchange metrics")
+	metricListCmd.Flags().String("miner", "", "miner identifier for mining-related metrics")
+	metricListCmd.Flags().String("maturity", "", "maturity period for derivatives metrics")
+	metricListCmd.Flags().String("network", "", "network/blockchain for cross-chain metrics")
+	metricListCmd.Flags().String("period", "", "time period for aggregation")
+	metricListCmd.Flags().String("quote-symbol", "", "quote currency symbol for trading pairs")
 }

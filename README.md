@@ -104,12 +104,31 @@ gn asset describe BTC
 
 ### `gn metric list`
 
-List all available metrics, optionally filtered by asset.
+List all available metrics, optionally filtered by [metadata query parameters](https://docs.glassnode.com/basic-api/metadata#query-parameters-1).
 
 ```bash
 gn metric list
 gn metric list --asset BTC
+gn metric list -a BTC -e binance -i 24h
+gn metric list --assets BTC --assets ETH
+gn metric list --from-exchange binance --to-exchange coinbase
 ```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--asset` | `-a` | Filter by asset (single) |
+| `--assets` | | Filter by multiple assets (repeat for each, e.g. `--assets BTC --assets ETH`) |
+| `--currency` | `-c` | Filter by currency (e.g. `native`, `usd`) |
+| `--exchange` | `-e` | Filter by exchange (e.g. `binance`, `coinbase`) |
+| `--format` | `-f` | Filter by response format (e.g. `json`, `csv`) |
+| `--interval` | `-i` | Filter by time interval (e.g. `1h`, `24h`) |
+| `--from-exchange` | | Source exchange for inter-exchange metrics |
+| `--to-exchange` | | Destination exchange for inter-exchange metrics |
+| `--miner` | | Miner identifier for mining-related metrics |
+| `--maturity` | | Maturity period for derivatives metrics |
+| `--network` | | Network/blockchain for cross-chain metrics |
+| `--period` | | Time period for aggregation |
+| `--quote-symbol` | | Quote currency symbol for trading pairs |
 
 ### `gn metric describe <path>`
 

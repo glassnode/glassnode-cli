@@ -234,7 +234,7 @@ func TestListMetrics(t *testing.T) {
 	client.BaseURL = server.URL
 	client.HTTPClient = server.Client()
 
-	metrics, err := client.ListMetrics(context.Background(), "")
+	metrics, err := client.ListMetrics(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("ListMetrics: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestListMetrics_WithAsset(t *testing.T) {
 	client.BaseURL = server.URL
 	client.HTTPClient = server.Client()
 
-	_, err := client.ListMetrics(context.Background(), "BTC")
+	_, err := client.ListMetrics(context.Background(), map[string]string{"a": "BTC"}, nil)
 	if err != nil {
 		t.Fatalf("ListMetrics: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestListMetrics_InvalidJSONReturnsError(t *testing.T) {
 	client.BaseURL = server.URL
 	client.HTTPClient = server.Client()
 
-	_, err := client.ListMetrics(context.Background(), "")
+	_, err := client.ListMetrics(context.Background(), nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
@@ -491,7 +491,7 @@ func TestListMetrics_EmptyArray(t *testing.T) {
 	client.BaseURL = server.URL
 	client.HTTPClient = server.Client()
 
-	metrics, err := client.ListMetrics(context.Background(), "")
+	metrics, err := client.ListMetrics(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("ListMetrics: %v", err)
 	}

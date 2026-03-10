@@ -38,7 +38,11 @@ gn asset describe BTC
 ```bash
 gn metric list
 gn metric list --asset BTC
+gn metric list -a BTC -e binance -i 24h
+gn metric list --assets BTC --assets ETH
+gn metric list --from-exchange binance --to-exchange coinbase
 ```
+Filter by any [metadata query parameters](https://docs.glassnode.com/basic-api/metadata#query-parameters-1): `--currency`, `--exchange`, `--interval`, `--from-exchange`, `--to-exchange`, `--miner`, `--maturity`, `--network`, `--period`, `--quote-symbol`, or multiple `--assets`.
 
 ### Describe a metric (discover valid parameters)
 ```bash
