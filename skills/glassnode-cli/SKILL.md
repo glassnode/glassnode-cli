@@ -1,3 +1,8 @@
+---
+name: glassnode-cli
+description: "Use the Glassnode CLI (gn) to list assets and metrics, fetch on-chain and market data from the Glassnode API, and manage config. Use when the user asks about Glassnode, on-chain data, crypto metrics, gn commands, or needs to call the Glassnode API from the terminal."
+---
+
 # Glassnode CLI (`gn`)
 
 Command-line interface for the Glassnode API.
