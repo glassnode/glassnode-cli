@@ -54,7 +54,7 @@ func ResolveAPIKey(flagValue string) string {
 func RequireAPIKey(flagValue string) (string, error) {
 	key := ResolveAPIKey(flagValue)
 	if key == "" {
-		return "", fmt.Errorf("no API key configured — set one with: gn config set api-key <key>")
+		return "", fmt.Errorf("no API key configured — set one with: gn config set api-key=your-key")
 	}
 	return key, nil
 }
