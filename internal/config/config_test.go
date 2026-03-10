@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/glassnode/gn/internal/testhelper"
+	"github.com/glassnode/glassnode-cli/internal/testhelper"
 )
 
 func withTempHome(t *testing.T, fn func()) {

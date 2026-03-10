@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glassnode/gn/internal/api"
+	"github.com/glassnode/glassnode-cli/internal/api"
 	"github.com/olekukonko/tablewriter"
 )
 

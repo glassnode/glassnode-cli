@@ -24,15 +24,15 @@ Command-line interface for the Glassnode API.
 
 **Linux / macOS** (one-liner):
 ```bash
-curl -sSL https://raw.githubusercontent.com/glassnode/gn/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/glassnode/glassnode-cli/main/install.sh | bash
 ```
 
 **Windows (PowerShell)**:
 ```powershell
-irm https://raw.githubusercontent.com/glassnode/gn/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/glassnode/glassnode-cli/main/install.ps1 | iex
 ```
 
-Or download manually from [GitHub Releases](https://github.com/glassnode/gn/releases). Custom install dir: `INSTALL_DIR=~/bin curl -sSL ... | bash`.
+Or download manually from [GitHub Releases](https://github.com/glassnode/glassnode-cli/releases). Custom install dir: `INSTALL_DIR=~/bin curl -sSL ... | bash`.
 
 Set your API key (priority: `--api-key` flag > `GLASSNODE_API_KEY` env > `~/.gn/config.yaml`):
 ```bash

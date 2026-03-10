@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-REPO="glassnode/gn"
+REPO="glassnode/glassnode-cli"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 case "$(uname -s)" in

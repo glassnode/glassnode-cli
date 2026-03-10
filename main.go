@@ -1,6 +1,6 @@
 package main
 
-import "github.com/glassnode/gn/cmd"
+import "github.com/glassnode/glassnode-cli/cmd"
 
 var version = "dev"
 

@@ -37,4 +37,4 @@ checksum:
 release:
   github:
     owner: glassnode
-    name: gn
+    name: glassnode-cli

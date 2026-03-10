@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glassnode/gn/internal/api"
+	"github.com/glassnode/glassnode-cli/internal/api"
 )
 
 func TestPrintJSON(t *testing.T) {

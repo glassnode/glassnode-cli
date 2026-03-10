@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/glassnode/gn/internal/api"
-	"github.com/glassnode/gn/internal/output"
+	"github.com/glassnode/glassnode-cli/internal/api"
+	"github.com/glassnode/glassnode-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 

@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/glassnode/gn/internal/config"
+	"github.com/glassnode/glassnode-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 

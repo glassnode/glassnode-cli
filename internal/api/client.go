@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/glassnode/gn/internal/config"
+	"github.com/glassnode/glassnode-cli/internal/config"
 )
 
 const defaultHTTPTimeout = 1 * time.Minute

@@ -1,6 +1,6 @@
-# One-line install: irm https://raw.githubusercontent.com/glassnode/gn/main/install.ps1 | iex
+# One-line install: irm https://raw.githubusercontent.com/glassnode/glassnode-cli/main/install.ps1 | iex
 $ErrorActionPreference = "Stop"
-$Repo = "glassnode/gn"
+$Repo = "glassnode/glassnode-cli"
 $GOOS = "windows"
 $GOARCH = "amd64"
 

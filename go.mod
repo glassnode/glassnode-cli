@@ -1,4 +1,4 @@
-module github.com/glassnode/gn
+module github.com/glassnode/glassnode-cli
 
 go 1.24.0
 

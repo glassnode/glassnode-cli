@@ -1,6 +1,6 @@
 # Glassnode CLI (`gn`)
 
-[![Test](https://github.com/glassnode/gn/actions/workflows/test.yml/badge.svg)](https://github.com/glassnode/gn/actions/workflows/test.yml) [![Release](https://github.com/glassnode/gn/actions/workflows/release.yml/badge.svg)](https://github.com/glassnode/gn/actions/workflows/release.yml)
+[![Test](https://github.com/glassnode/glassnode-cli/actions/workflows/test.yml/badge.svg)](https://github.com/glassnode/glassnode-cli/actions/workflows/test.yml) [![Release](https://github.com/glassnode/glassnode-cli/actions/workflows/release.yml/badge.svg)](https://github.com/glassnode/glassnode-cli/actions/workflows/release.yml)
 
 Command-line interface for the [Glassnode API](https://docs.glassnode.com/)
 
@@ -11,32 +11,34 @@ Command-line interface for the [Glassnode API](https://docs.glassnode.com/)
 **Linux / macOS**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/glassnode/gn/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/glassnode/glassnode-cli/main/install.sh | bash
 ```
 
 Installs the latest release to `/usr/local/bin` (uses `sudo` if needed). To install elsewhere:
 
 ```bash
-INSTALL_DIR=~/bin curl -sSL https://raw.githubusercontent.com/glassnode/gn/main/install.sh | bash
+INSTALL_DIR=~/bin curl -sSL https://raw.githubusercontent.com/glassnode/glassnode-cli/main/install.sh | bash
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-irm https://raw.githubusercontent.com/glassnode/gn/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/glassnode/glassnode-cli/main/install.ps1 | iex
 ```
 
 Installs to `%LOCALAPPDATA%\glassnode\bin` and adds it to your user `PATH` if needed.
 
 ### Manual download
 
-Download the archive for your OS and architecture from [Releases](https://github.com/glassnode/gn/releases), extract it, then move the binary into your `PATH` and make it executable (`chmod +x gn` on Unix).
+Download the archive for your OS and architecture from [Releases](https://github.com/glassnode/glassnode-cli/releases), extract it, then move the binary into your `PATH` and make it executable (`chmod +x gn` on Unix).
 
 ### From source
 
 ```bash
-go install github.com/glassnode/gn@latest
+go install github.com/glassnode/glassnode-cli@latest
 ```
+
+The binary from `go install` is named `glassnode-cli`. To get the same `gn` command as the release, build with: `go build -o gn .` and put `gn` in your PATH.
 
 ## Quick Start
 
@@ -225,8 +227,8 @@ gn asset list --filter "asset.semantic_tags.exists(tag,tag=='stablecoin')"
 ### Build from source
 
 ```bash
-git clone https://github.com/glassnode/gn.git
-cd cli
+git clone https://github.com/glassnode/glassnode-cli.git
+cd glassnode-cli
 go build -o gn .
 ```
 

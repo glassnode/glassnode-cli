@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glassnode/gn/internal/config"
-	"github.com/glassnode/gn/internal/testhelper"
+	"github.com/glassnode/glassnode-cli/internal/config"
+	"github.com/glassnode/glassnode-cli/internal/testhelper"
 )
 
 //go:embed testdata/assets.json
