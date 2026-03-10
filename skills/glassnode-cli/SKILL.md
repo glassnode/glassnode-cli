@@ -9,7 +9,7 @@ Command-line interface for the Glassnode API.
 
 ## Setup
 
-See the [Installation section in the README](../../README.md#installation) for install options.
+If the `gn` command is not available you need to install the CLI. See the [Installation section in the README](https://github.com/glassnode/glassnode-cli/blob/main/README.md#installation) for install and setup options.
 
 Quick start:
 ```bash
