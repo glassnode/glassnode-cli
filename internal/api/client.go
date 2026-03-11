@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/glassnode/glassnode-cli/internal/config"
+	"github.com/glassnode/glassnode-cli/internal/version"
 )
 
 const (
@@ -94,7 +95,7 @@ func (c *Client) DoWithRepeatedParams(ctx context.Context, method, path string, 
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	req.Header.Set("User-Agent", "cli")
+	req.Header.Set("User-Agent", "glassnode-cli-"+version.Version)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

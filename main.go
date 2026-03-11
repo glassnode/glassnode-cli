@@ -1,10 +1,11 @@
 package main
 
-import "github.com/glassnode/glassnode-cli/cmd"
-
-var version = "dev"
+import (
+	"github.com/glassnode/glassnode-cli/cmd"
+	"github.com/glassnode/glassnode-cli/internal/version"
+)
 
 func main() {
-	cmd.SetVersion(version)
+	cmd.SetVersion(version.Version)
 	cmd.Execute()
 }
