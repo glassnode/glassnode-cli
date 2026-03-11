@@ -1,6 +1,6 @@
 # Glassnode CLI (`gn`)
 
-[![Test](https://github.com/glassnode/glassnode-cli/actions/workflows/test.yml/badge.svg)](https://github.com/glassnode/glassnode-cli/actions/workflows/test.yml) [![Release](https://github.com/glassnode/glassnode-cli/actions/workflows/release.yml/badge.svg)](https://github.com/glassnode/glassnode-cli/actions/workflows/release.yml)
+[![Test](https://github.com/glassnode/glassnode-cli/actions/workflows/test.yml/badge.svg)](https://github.com/glassnode/glassnode-cli/actions/workflows/test.yml) [![Release](https://img.shields.io/github/v/release/glassnode/glassnode-cli)](https://github.com/glassnode/glassnode-cli/releases)
 
 Command-line interface for the [Glassnode API](https://docs.glassnode.com/)
 
