@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -10,6 +9,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "gn",
 	Short: "Glassnode API command-line interface",
+	SilenceUsage: true, // don't print help when a subcommand returns an error (e.g. API errors)
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// No setup required; API key is resolved via flag/env/config in each command.
 		return nil
@@ -35,7 +35,6 @@ func SetVersion(v string) {
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

@@ -112,6 +112,9 @@ func (c *Client) DoWithRepeatedParams(ctx context.Context, method, path string, 
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == 429 {
+			return nil, fmt.Errorf("HTTP 429: rate limit exceeded. %s", string(body))
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
