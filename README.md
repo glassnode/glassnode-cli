@@ -166,10 +166,20 @@ For **bulk metrics**, append `/bulk` to the path (e.g. `market/marketcap_usd/bul
 
 ### `gn user credits`
 
-Show current API usage for your account.
+Show the current API usage for your account.
 
 ```bash
 gn user credits
+```
+
+Example output:
+
+```json
+{
+  "creditsLeft": integer,
+  "creditsPerMonth": integer,
+  "creditsUsed": integer
+}
 ```
 
 ### `gn config set key=value`
