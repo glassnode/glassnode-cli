@@ -164,6 +164,14 @@ gn metric get market/marketcap_usd/bulk -a '*' --since 30d
 
 For **bulk metrics**, append `/bulk` to the path (e.g. `market/marketcap_usd/bulk`). To pass multiple assets, repeat the `-a` (or `--asset`) flag for each: `-a BTC -a ETH -a SOL`. Use `-a '*'` to request all assets.
 
+### `gn user credits`
+
+Show current API usage for your account.
+
+```bash
+gn user credits
+```
+
 ### `gn config set key=value`
 
 Set a configuration value.
