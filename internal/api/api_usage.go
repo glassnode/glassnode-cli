@@ -16,9 +16,9 @@ type APIUsageResponse struct {
 }
 
 // CreditsPerMonth returns the largest addon credit value, or 0 when there are no addons
-func (r *APIUsageResponse) CreditsPerMonth() int {
+func (a *APIUsageResponse) CreditsPerMonth() int {
 	var max int
-	for _, a := range r.APIAddons {
+	for _, a := range a.APIAddons {
 		if a.Value > max {
 			max = a.Value
 		}
@@ -34,12 +34,17 @@ type CreditsSummary struct {
 	CreditsUsed     int `json:"creditsUsed"`
 }
 
-func (r *APIUsageResponse) Summary() CreditsSummary {
-	per := r.CreditsPerMonth()
+func (a *APIUsageResponse) Summary() CreditsSummary {
+	per := a.CreditsPerMonth()
+	left := per - a.CreditsUsed
+	if left < 0 {
+		left = 0
+	}
+
 	return CreditsSummary{
-		CreditsUsed:     r.CreditsUsed,
+		CreditsUsed:     a.CreditsUsed,
 		CreditsPerMonth: per,
-		CreditsLeft:     per - r.CreditsUsed,
+		CreditsLeft:     left,
 	}
 }
 
