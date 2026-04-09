@@ -7,8 +7,8 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "gn",
-	Short: "Glassnode API command-line interface",
+	Use:          "gn",
+	Short:        "Glassnode API command-line interface",
 	SilenceUsage: true, // don't print help when a subcommand returns an error (e.g. API errors)
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// No setup required; API key is resolved via flag/env/config in each command.
@@ -27,6 +27,7 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(metricCmd)
 	rootCmd.AddCommand(assetCmd)
+	rootCmd.AddCommand(userCmd)
 }
 
 func SetVersion(v string) {

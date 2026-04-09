@@ -1,6 +1,6 @@
 ---
 name: glassnode-cli
-description: "Use the Glassnode CLI (gn) to list assets and metrics, fetch on-chain and market data from the Glassnode API, and manage config. Use when the user asks about Glassnode, on-chain data, crypto metrics, gn commands, or needs to call the Glassnode API from the terminal."
+description: "Use the Glassnode CLI (gn) to list assets and metrics, fetch on-chain and market data from the Glassnode API, check API credit usage, and manage config. Use when the user asks about Glassnode, on-chain data, crypto metrics, gn commands, or needs to call the Glassnode API from the terminal."
 ---
 
 # Glassnode CLI (`gn`)
@@ -64,6 +64,24 @@ Append `/bulk` to the metric path. Repeat `-a` (or `--asset`) for each asset, or
 ```bash
 gn metric get market/marketcap_usd/bulk -a BTC -a ETH -a SOL -s 1d
 gn metric get market/marketcap_usd/bulk -a '*' --interval 24h --since 30d
+```
+
+### API credit usage (`gn user credits`)
+
+Shows the current API usage for the account.
+
+```bash
+gn user credits
+```
+
+Example JSON output:
+
+```json
+{
+  "creditsLeft": integer,
+  "creditsPerMonth": integer,
+  "creditsUsed": integer
+}
 ```
 
 ### Config set / get
