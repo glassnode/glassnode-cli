@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -16,15 +18,53 @@ func moduleRoot(t *testing.T) string {
 	return filepath.Join(filepath.Dir(f), "..")
 }
 
+// goToolchainCacheDirs returns GOMODCACHE and GOCACHE for the running `go` tool. When tests set
+// a synthetic HOME (to isolate ~/.gn), nested `go run` would otherwise default caches under that
+// HOME; the module cache uses read-only files and breaks t.TempDir cleanup on CI.
+var toolchainCaches struct {
+	once         sync.Once
+	gomodcache   string
+	gocache      string
+	resolveError error
+}
+
+func goToolchainCacheDirs() (gomodcache, gocache string, err error) {
+	toolchainCaches.once.Do(func() {
+		cmd := exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE")
+		cmd.Env = os.Environ()
+		out, e := cmd.Output()
+		if e != nil {
+			toolchainCaches.resolveError = e
+			return
+		}
+		var m struct {
+			GOMODCACHE string `json:"GOMODCACHE"`
+			GOCACHE    string `json:"GOCACHE"`
+		}
+		if e := json.Unmarshal(out, &m); e != nil {
+			toolchainCaches.resolveError = e
+			return
+		}
+		toolchainCaches.gomodcache = m.GOMODCACHE
+		toolchainCaches.gocache = m.GOCACHE
+	})
+	return toolchainCaches.gomodcache, toolchainCaches.gocache, toolchainCaches.resolveError
+}
+
 // runCLI runs "go run ." with the given args from the module root.
 // Returns stdout, stderr, and exit error (nil if exit code 0).
 func runCLI(t *testing.T, env []string, args ...string) (string, string, error) {
 	t.Helper()
 	root := moduleRoot(t)
+	gomodcache, gocache, err := goToolchainCacheDirs()
+	if err != nil {
+		t.Fatalf("go env GOMODCACHE/GOCACHE: %v", err)
+	}
 	cmdArgs := append([]string{"run", "."}, args...)
 	cmd := exec.Command("go", cmdArgs...)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(cmd.Env, "GOMODCACHE="+gomodcache, "GOCACHE="+gocache)
 	var outBuf, errBuf strings.Builder
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
