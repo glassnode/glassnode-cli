@@ -13,12 +13,12 @@ var creditsCmd = &cobra.Command{
 	Short: "Show the API credits summary for your account",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		apiKeyFlag, _ := cmd.Flags().GetString("api-key")
-		apiKey, err := api.RequireAPIKey(apiKeyFlag)
+		apiKey, bearer, err := api.RequireAuth(cmd.Context(), apiKeyFlag)
 		if err != nil {
 			return err
 		}
 
-		client := api.NewClient(apiKey)
+		client := api.NewClient(apiKey, bearer)
 
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		if dryRun {
