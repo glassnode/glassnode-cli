@@ -13,11 +13,11 @@ var metricListCmd = &cobra.Command{
 	Short: "List available metrics",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		apiKeyFlag, _ := cmd.Flags().GetString("api-key")
-		apiKey, err := api.RequireAPIKey(apiKeyFlag)
+		apiKey, bearer, err := api.RequireAuth(cmd.Context(), apiKeyFlag)
 		if err != nil {
 			return err
 		}
-		client := api.NewClient(apiKey)
+		client := api.NewClient(apiKey, bearer)
 
 		params, repeatedParams := metricListParamsFromFlags(cmd)
 

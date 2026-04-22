@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,7 +18,7 @@ func moduleRoot(t *testing.T) string {
 
 // runCLI runs "go run ." with the given args from the module root.
 // Returns stdout, stderr, and exit error (nil if exit code 0).
-func runCLI(t *testing.T, env []string, args ...string) (stdout, stderr string, err error) {
+func runCLI(t *testing.T, env []string, args ...string) (string, string, error) {
 	t.Helper()
 	root := moduleRoot(t)
 	cmdArgs := append([]string{"run", "."}, args...)
@@ -35,7 +33,7 @@ func runCLI(t *testing.T, env []string, args ...string) (stdout, stderr string, 
 }
 
 func TestMetricGet_DryRun_PrintsURLWithRedactedKey(t *testing.T) {
-	stdout, stderr, err := runCLI(t, nil,
+	stdout, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir()},
 		"metric", "get", "/market/price_usd_close",
 		"--api-key", "secret-key",
 		"--dry-run",
@@ -55,7 +53,7 @@ func TestMetricGet_DryRun_PrintsURLWithRedactedKey(t *testing.T) {
 }
 
 func TestMetricGet_DryRun_URLContainsParams(t *testing.T) {
-	stdout, _, err := runCLI(t, nil,
+	stdout, _, err := runCLI(t, []string{"HOME=" + t.TempDir()},
 		"metric", "get", "/market/price_usd_close",
 		"--api-key", "k",
 		"--asset", "BTC",
@@ -82,27 +80,22 @@ func TestMetricGet_DryRun_URLContainsParams(t *testing.T) {
 }
 
 func TestMetricGet_MissingAPIKey_Fails(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"error":"Invalid API key"}`))
-	}))
-	defer server.Close()
-
-	stdout, stderr, err := runCLI(t, []string{"GLASSNODE_BASE_URL=" + server.URL},
+	// No --api-key flag, clean HOME (so no config file), and GLASSNODE_API_KEY explicitly
+	// unset: the CLI must error out at credential resolution without making any HTTP call.
+	stdout, stderr, err := runCLI(t,
+		[]string{"HOME=" + t.TempDir(), "GLASSNODE_API_KEY="},
 		"metric", "get", "/market/price_usd_close",
 	)
 	if err == nil {
 		t.Fatalf("expected non-zero exit; stdout: %s", stdout)
 	}
-	// Error message may be in stderr (e.g. "HTTP 401: ...") or stdout
-	combined := stderr + stdout
-	if combined == "" {
-		t.Errorf("expected some error output; stderr: %q stdout: %q", stderr, stdout)
+	if !strings.Contains(stderr, "no credentials") && !strings.Contains(stderr, "API key") && !strings.Contains(stderr, "gn login") {
+		t.Errorf("expected credential error in stderr, got: %q", stderr)
 	}
 }
 
 func TestMetricGet_InvalidSince_Fails(t *testing.T) {
-	_, stderr, err := runCLI(t, nil,
+	_, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir()},
 		"metric", "get", "/market/price_usd_close",
 		"--api-key", "k",
 		"--since", "not-a-date",
@@ -116,7 +109,7 @@ func TestMetricGet_InvalidSince_Fails(t *testing.T) {
 }
 
 func TestMetricGet_InvalidUntil_Fails(t *testing.T) {
-	_, stderr, err := runCLI(t, nil,
+	_, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir()},
 		"metric", "get", "/market/price_usd_close",
 		"--api-key", "k",
 		"--until", "invalid",

@@ -4,13 +4,89 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/glassnode/glassnode-cli/internal/testhelper"
 )
 
 func withTempHome(t *testing.T, fn func()) {
 	testhelper.WithTempHome(t, fn)
+}
+
+func TestSaveOAuthSession(t *testing.T) {
+	withTempHome(t, func() {
+		exp := time.Date(2030, 1, 2, 15, 4, 5, 0, time.UTC)
+		if err := SaveOAuthSession(OAuthSession{
+			AccessToken:  "at",
+			RefreshToken: "rt",
+			ExpiresAt:    exp,
+		}); err != nil {
+			t.Fatalf("SaveOAuthSession: %v", err)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.OAuthAccessToken != "at" || cfg.OAuthRefreshToken != "rt" {
+			t.Errorf("tokens not saved: %+v", cfg)
+		}
+		if cfg.OAuthExpiresAt != "2030-01-02T15:04:05Z" {
+			t.Errorf("expires at %q", cfg.OAuthExpiresAt)
+		}
+	})
+}
+
+func TestClearOAuthSession(t *testing.T) {
+	withTempHome(t, func() {
+		if err := SaveOAuthSession(OAuthSession{
+			AccessToken:  "at",
+			RefreshToken: "rt",
+			ExpiresAt:    time.Now().UTC().Add(time.Hour),
+		}); err != nil {
+			t.Fatalf("SaveOAuthSession: %v", err)
+		}
+		if err := ClearOAuthSession(); err != nil {
+			t.Fatalf("ClearOAuthSession: %v", err)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.OAuthAccessToken != "" || cfg.OAuthRefreshToken != "" || cfg.OAuthExpiresAt != "" {
+			t.Errorf("OAuth fields not cleared: %+v", cfg)
+		}
+	})
+}
+
+func TestSet_RejectsOAuthKeys(t *testing.T) {
+	withTempHome(t, func() {
+		for _, k := range []string{"oauth-access-token", "oauth-refresh-token", "oauth-expires-at"} {
+			if err := Set(k, "x"); err == nil {
+				t.Errorf("Set(%q) should be rejected as read-only", k)
+			}
+		}
+	})
+}
+
+func TestMask(t *testing.T) {
+	cases := []struct {
+		key, in, want string
+	}{
+		{"api-key", "", ""},
+		{"api-key", "abcd", "*****"},
+		{"api-key", "abcdefghij", "*****-ghij"},
+		{"oauth-refresh-token", "abcdefghij", "*****-ghij"},
+		{"oauth-expires-at", "2030-01-02T15:04:05Z", "2030-01-02T15:04:05Z"},
+		{"api-key", "1234567890abcdef", "*****-cdef"},
+	}
+	for _, c := range cases {
+		got := Mask(c.key, c.in)
+		if got != c.want {
+			t.Errorf("Mask(%q,%q) = %q, want %q", c.key, c.in, got, c.want)
+		}
+	}
 }
 
 func TestSetAndGet(t *testing.T) {
@@ -43,6 +119,9 @@ func TestSetUnknownKey(t *testing.T) {
 		err := Set("unknown-key", "value")
 		if err == nil {
 			t.Error("expected error for unknown key")
+		}
+		if err != nil && !strings.Contains(err.Error(), "unknown") {
+			t.Errorf("expected 'unknown' in error, got %v", err)
 		}
 	})
 }

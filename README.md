@@ -43,8 +43,8 @@ The binary from `go install` is named `glassnode-cli`. To get the same `gn` comm
 ## Quick Start
 
 ```bash
-# Set your API key
-export GLASSNODE_API_KEY=your-key
+# Sign in with your Glassnode account
+gn login
 
 # List available assets
 gn asset list
@@ -53,7 +53,29 @@ gn asset list
 gn metric get market/price_usd_close --asset BTC --since 30d
 ```
 
+Or authenticate with an API key instead:
+
+```bash
+export GLASSNODE_API_KEY=your-key
+```
+
 ## Authentication
+
+### OAuth
+
+Sign in with your Glassnode account:
+
+```bash
+gn login
+```
+
+And to sign out:
+
+```bash
+gn logout
+```
+
+### API key
 
 The CLI resolves the API key in the following priority order:
 
@@ -61,7 +83,9 @@ The CLI resolves the API key in the following priority order:
 2. `GLASSNODE_API_KEY` environment variable
 3. `~/.gn/config.yaml` configuration file
 
-To persist the key in the config file:
+However the OAuth access token has precedence and will be used if it is available.
+
+To persist the API key in the config file:
 
 ```bash
 gn config set api-key=your-key
@@ -175,12 +199,14 @@ gn config set output=csv
 
 ### `gn config get <key|all>`
 
-Read a configuration value, or all values.
+Read a configuration value, or all values. Sensitive values (`api-key`, `oauth-access-token`, `oauth-refresh-token`) are **masked** as `*****-<last4>` so they're safe to show in screen shares, recordings, or shell scrollback.
 
 ```bash
-gn config get api-key
+gn config get api-key       # e.g. "*****-cdef"
 gn config get all
 ```
+
+OAuth session fields (`oauth-access-token`, `oauth-refresh-token`, `oauth-expires-at`) are read-only: they are written only by `gn login` / token refresh and cannot be changed via `gn config set`.
 
 ## Global Flags
 

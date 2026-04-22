@@ -9,7 +9,7 @@ import (
 
 var configGetCmd = &cobra.Command{
 	Use:   "get <key>",
-	Short: "Get a configuration value (use 'all' to show all)",
+	Short: "Get a configuration value (use 'all' to show all). Sensitive values are masked.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if args[0] == "all" {
@@ -18,8 +18,7 @@ var configGetCmd = &cobra.Command{
 				return err
 			}
 			for k, v := range values {
-				_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", k, v)
-				if err != nil {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", k, config.Mask(k, v)); err != nil {
 					return err
 				}
 			}
@@ -30,10 +29,7 @@ var configGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(cmd.OutOrStdout(), value)
-		if err != nil {
-			return err
-		}
-		return nil
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), config.Mask(args[0], value))
+		return err
 	},
 }
