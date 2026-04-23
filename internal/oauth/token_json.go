@@ -48,6 +48,7 @@ func decodeTokenJSON(raw []byte) (string, string, int, error) {
 	if tr.TokenType != "" && !strings.EqualFold(tr.TokenType, "bearer") {
 		return "", "", 0, fmt.Errorf("unexpected token_type %q, want bearer", sanitizeForTerm(tr.TokenType, maxTermOAuthCodeLen))
 	}
+
 	return tr.AccessToken, tr.RefreshToken, tr.ExpiresIn, nil
 }
 

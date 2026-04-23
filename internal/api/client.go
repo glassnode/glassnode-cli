@@ -73,7 +73,7 @@ func ResolveAuth(ctx context.Context, flagAPIKey string) (string, string, error)
 	bearer, oerr := oauth.EnsureOAuthAccessToken(ctx)
 	if oerr != nil {
 		if key := ResolveAPIKey(flagAPIKey); key != "" {
-			fmt.Fprintf(stderr, "warning: OAuth unavailable (%v); falling back to API key\n", oerr)
+			_, _ = fmt.Fprintf(stderr, "warning: OAuth unavailable (%v); falling back to API key\n", oerr)
 			return key, "", nil
 		}
 		return "", "", oerr
@@ -139,7 +139,7 @@ func (c *Client) DoWithRepeatedParams(ctx context.Context, method, path string, 
 				return nil, err
 			}
 		} else if rerr != nil && !errors.Is(rerr, oauth.ErrSessionExpired) {
-			fmt.Fprintf(stderr, "warning: refresh after HTTP %d failed: %v\n", http.StatusUnauthorized, rerr)
+			_, _ = fmt.Fprintf(stderr, "warning: refresh after HTTP %d failed: %v\n", http.StatusUnauthorized, rerr)
 		}
 	}
 

@@ -28,6 +28,7 @@ func Logout(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	refresh := cfg.OAuthRefreshToken
 	access := cfg.OAuthAccessToken
 	var remoteErr error

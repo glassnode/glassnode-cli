@@ -28,6 +28,11 @@ var toolchainCaches struct {
 	resolveError error
 }
 
+type goConfig struct {
+	GOMODCACHE string `json:"GOMODCACHE"`
+	GOCACHE    string `json:"GOCACHE"`
+}
+
 func goToolchainCacheDirs() (gomodcache, gocache string, err error) {
 	toolchainCaches.once.Do(func() {
 		cmd := exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE")
@@ -37,16 +42,14 @@ func goToolchainCacheDirs() (gomodcache, gocache string, err error) {
 			toolchainCaches.resolveError = e
 			return
 		}
-		var m struct {
-			GOMODCACHE string `json:"GOMODCACHE"`
-			GOCACHE    string `json:"GOCACHE"`
-		}
-		if e := json.Unmarshal(out, &m); e != nil {
+		var gc goConfig
+		if e := json.Unmarshal(out, &gc); e != nil {
 			toolchainCaches.resolveError = e
 			return
 		}
-		toolchainCaches.gomodcache = m.GOMODCACHE
-		toolchainCaches.gocache = m.GOCACHE
+
+		toolchainCaches.gomodcache = gc.GOMODCACHE
+		toolchainCaches.gocache = gc.GOCACHE
 	})
 	return toolchainCaches.gomodcache, toolchainCaches.gocache, toolchainCaches.resolveError
 }
