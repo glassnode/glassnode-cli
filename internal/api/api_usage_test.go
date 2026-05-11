@@ -24,7 +24,7 @@ func TestGetAPIUsage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("my-key")
+	client := NewClient("my-key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -61,7 +61,7 @@ func TestGetAPIUsage_InvalidJSONReturnsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 

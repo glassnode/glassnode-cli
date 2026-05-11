@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func runCLIAssetList(t *testing.T, baseURL string, args ...string) (stdout, stderr string, err error) {
+func runCLIAssetList(t *testing.T, baseURL string, args ...string) (string, string, error) {
 	t.Helper()
 	_, f, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(f), "..")
