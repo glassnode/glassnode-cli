@@ -6,7 +6,7 @@ import (
 )
 
 func TestCredits_DryRun_RedactsKey(t *testing.T) {
-	stdout, stderr, err := runCLI(t, nil,
+	stdout, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir()},
 		"user", "credits", "--api-key", "secret-key", "--dry-run",
 	)
 	if err != nil {

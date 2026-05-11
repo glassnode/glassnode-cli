@@ -7,9 +7,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/glassnode/glassnode-cli/internal/config"
+	"github.com/glassnode/glassnode-cli/internal/oauth"
 	"github.com/glassnode/glassnode-cli/internal/testhelper"
 )
 
@@ -73,6 +76,102 @@ func TestResolveAPIKey_FromConfigFile(t *testing.T) {
 	})
 }
 
+func TestResolveAuth_OAuthPreferred(t *testing.T) {
+	withTempHome(t, func() {
+		_ = os.Unsetenv("GLASSNODE_API_KEY")
+		if err := config.Set("api-key", "config-key"); err != nil {
+			t.Fatalf("config.Set: %v", err)
+		}
+		exp := time.Now().UTC().Add(time.Hour)
+		if err := config.SaveOAuthSession(config.OAuthSession{
+			AccessToken:  "oauth-access",
+			RefreshToken: "oauth-refresh",
+			ExpiresAt:    exp,
+		}); err != nil {
+			t.Fatalf("SaveOAuthSession: %v", err)
+		}
+		key, bearer, err := ResolveAuth(context.Background(), "flag-key")
+		if err != nil {
+			t.Fatalf("ResolveAuth: %v", err)
+		}
+		if key != "" || bearer != "oauth-access" {
+			t.Errorf("ResolveAuth: apiKey=%q bearer=%q (want empty key, oauth-access)", key, bearer)
+		}
+	})
+}
+
+func TestResolveAuth_FallbackWhenOAuthExpired(t *testing.T) {
+	withTempHome(t, func() {
+		_ = os.Unsetenv("GLASSNODE_API_KEY")
+		if err := config.Set("api-key", "fallback-key"); err != nil {
+			t.Fatalf("config.Set: %v", err)
+		}
+		past := time.Now().UTC().Add(-time.Hour)
+		if err := config.SaveOAuthSession(config.OAuthSession{
+			AccessToken:  "dead",
+			RefreshToken: "",
+			ExpiresAt:    past,
+		}); err != nil {
+			t.Fatalf("SaveOAuthSession: %v", err)
+		}
+		key, bearer, err := ResolveAuth(context.Background(), "")
+		if err != nil {
+			t.Fatalf("ResolveAuth: %v", err)
+		}
+		if bearer != "" || key != "fallback-key" {
+			t.Errorf("ResolveAuth: apiKey=%q bearer=%q", key, bearer)
+		}
+	})
+}
+
+func TestResolveAuth_RefreshesExpiredAccessToken(t *testing.T) {
+	withTempHome(t, func() {
+		_ = os.Unsetenv("GLASSNODE_API_KEY")
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/oauth/token" {
+				t.Errorf("unexpected path %s", r.URL.Path)
+			}
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm: %v", err)
+			}
+			if r.Form.Get("grant_type") != "refresh_token" {
+				t.Errorf("grant_type=%q", r.Form.Get("grant_type"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"access_token":"new-access","refresh_token":"new-refresh","expires_in":7200,"token_type":"Bearer"}`))
+		}))
+		defer ts.Close()
+
+		restore := oauth.OverrideDefaultsForTesting(ts.URL, "https://api.example", "test-client")
+		defer restore()
+
+		past := time.Now().UTC().Add(-time.Hour)
+		if err := config.SaveOAuthSession(config.OAuthSession{
+			AccessToken:  "dead",
+			RefreshToken: "old-refresh",
+			ExpiresAt:    past,
+		}); err != nil {
+			t.Fatalf("SaveOAuthSession: %v", err)
+		}
+
+		key, bearer, err := ResolveAuth(context.Background(), "")
+		if err != nil {
+			t.Fatalf("ResolveAuth: %v", err)
+		}
+		if key != "" || bearer != "new-access" {
+			t.Errorf("ResolveAuth: apiKey=%q bearer=%q", key, bearer)
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.OAuthRefreshToken != "new-refresh" {
+			t.Errorf("refresh token not rotated in config: %q", cfg.OAuthRefreshToken)
+		}
+	})
+}
+
 func TestDo_SendsCorrectURL(t *testing.T) {
 	var capturedURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +181,7 @@ func TestDo_SendsCorrectURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("my-api-key")
+	client := NewClient("my-api-key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -98,6 +197,122 @@ func TestDo_SendsCorrectURL(t *testing.T) {
 	}
 }
 
+func TestDo_SendsBearerAuthorization(t *testing.T) {
+	var authHdr, capturedURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHdr = r.Header.Get("Authorization")
+		capturedURL = r.URL.String()
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer server.Close()
+
+	client := NewClient("", "secret-token")
+	client.baseURL = server.URL
+	client.httpClient = server.Client()
+
+	_, err := client.Do(context.Background(), "GET", "/v1/test", map[string]string{"a": "b"})
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if authHdr != "Bearer secret-token" {
+		t.Errorf("Authorization header %q, want Bearer secret-token", authHdr)
+	}
+	if strings.Contains(capturedURL, "api_key") {
+		t.Errorf("URL should not contain api_key when using bearer: %q", capturedURL)
+	}
+}
+
+func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
+	withTempHome(t, func() {
+		var mu sync.Mutex
+		var authHdrs []string
+		var attempts int
+		api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			authHdrs = append(authHdrs, r.Header.Get("Authorization"))
+			attempts++
+			attempt := attempts
+			mu.Unlock()
+			if attempt == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		defer api.Close()
+
+		idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"fresh","refresh_token":"rt2","expires_in":3600,"token_type":"Bearer"}`))
+		}))
+		defer idp.Close()
+		restore := oauth.OverrideDefaultsForTesting(idp.URL, "https://api.example", "cid")
+		defer restore()
+
+		if err := config.SaveOAuthSession(config.OAuthSession{
+			AccessToken:  "stale",
+			RefreshToken: "rt1",
+			ExpiresAt:    time.Now().UTC().Add(time.Hour), // appears valid by expiry
+		}); err != nil {
+			t.Fatalf("SaveOAuthSession: %v", err)
+		}
+
+		client := NewClient("", "stale")
+		client.baseURL = api.URL
+		client.httpClient = api.Client()
+
+		body, err := client.Do(context.Background(), "GET", "/v1/anything", nil)
+		if err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+		if !strings.Contains(string(body), "ok") {
+			t.Errorf("body %q, want contents including 'ok'", string(body))
+		}
+		if len(authHdrs) != 2 {
+			t.Fatalf("expected 2 API attempts, got %d", len(authHdrs))
+		}
+		if authHdrs[0] != "Bearer stale" || authHdrs[1] != "Bearer fresh" {
+			t.Errorf("auth headers %v", authHdrs)
+		}
+	})
+}
+
+func TestDo_401WithAPIKey_NoRetry(t *testing.T) {
+	// When using an API key (not a bearer), a 401 must NOT trigger a refresh attempt; we just
+	// surface the error. This guards against silently attempting OAuth refreshes for users who
+	// never ran gn login.
+	withTempHome(t, func() {
+		var mu sync.Mutex
+		var attempts int
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			attempts++
+			mu.Unlock()
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"bad key"}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("apikey", "")
+		client.baseURL = server.URL
+		client.httpClient = server.Client()
+
+		_, err := client.Do(context.Background(), "GET", "/v1/x", nil)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		mu.Lock()
+		got := attempts
+		mu.Unlock()
+		if got != 1 {
+			t.Errorf("attempts=%d, want 1 (no retry for API-key auth)", got)
+		}
+	})
+}
+
 func TestDo_Non2xxReturnsError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -105,7 +320,7 @@ func TestDo_Non2xxReturnsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -124,7 +339,7 @@ func TestDoWithRepeatedParams(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -139,7 +354,7 @@ func TestDoWithRepeatedParams(t *testing.T) {
 }
 
 func TestBuildURL(t *testing.T) {
-	client := NewClient("test-key")
+	client := NewClient("test-key", "")
 	client.baseURL = "https://api.example.com"
 	got, err := client.BuildURL("/v1/path", map[string]string{"p": "v"}, map[string][]string{"a": {"x"}})
 	if err != nil {
@@ -181,7 +396,7 @@ func TestListAssets(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -206,7 +421,7 @@ func TestListAssets_WithFilter(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -230,7 +445,7 @@ func TestListMetrics(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -258,7 +473,7 @@ func TestListMetrics_WithAsset(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -278,7 +493,7 @@ func TestDescribeMetric(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -303,7 +518,7 @@ func TestDescribeMetric_WithAsset(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -337,7 +552,7 @@ func TestGetMetric(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -363,7 +578,7 @@ func TestGetMetricBulk(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -397,7 +612,7 @@ func TestListAssets_InvalidJSONReturnsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -414,7 +629,7 @@ func TestListMetrics_InvalidJSONReturnsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -431,7 +646,7 @@ func TestGetMetric_InvalidJSONReturnsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -448,7 +663,7 @@ func TestGetMetricBulk_InvalidJSONReturnsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -467,7 +682,7 @@ func TestListAssets_EmptyArray(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -487,7 +702,7 @@ func TestListMetrics_EmptyArray(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -507,7 +722,7 @@ func TestGetMetric_EmptyArray(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -527,7 +742,7 @@ func TestGetMetricBulk_EmptyData(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -549,7 +764,7 @@ func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key")
+	client := NewClient("key", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 

@@ -16,11 +16,11 @@ var metricDescribeCmd = &cobra.Command{
 		path := api.NormalizePath(args[0])
 
 		apiKeyFlag, _ := cmd.Flags().GetString("api-key")
-		apiKey, err := api.RequireAPIKey(apiKeyFlag)
+		apiKey, bearer, err := api.RequireAuth(cmd.Context(), apiKeyFlag)
 		if err != nil {
 			return err
 		}
-		client := api.NewClient(apiKey)
+		client := api.NewClient(apiKey, bearer)
 
 		asset, _ := cmd.Flags().GetString("asset")
 
