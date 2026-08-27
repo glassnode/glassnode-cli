@@ -10,4 +10,7 @@ var assetCmd = &cobra.Command{
 func init() {
 	assetCmd.AddCommand(assetListCmd)
 	assetCmd.AddCommand(assetDescribeCmd)
+	assetCmd.AddCommand(assetTagsCmd)
+	assetCmd.AddCommand(assetCategoriesCmd)
+	assetCmd.AddCommand(assetBlockchainsCmd)
 }

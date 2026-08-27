@@ -11,4 +11,5 @@ func init() {
 	metricCmd.AddCommand(metricListCmd)
 	metricCmd.AddCommand(metricDescribeCmd)
 	metricCmd.AddCommand(metricGetCmd)
+	metricCmd.AddCommand(metricTagsCmd)
 }
