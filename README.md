@@ -126,6 +126,53 @@ Show details about an asset.
 gn asset describe BTC
 ```
 
+### `gn asset tags`
+
+List all asset semantic tags, optionally over a CEL-filtered subset of assets.
+
+```bash
+gn asset tags
+gn asset tags --filter "asset.categories.exists(c,c=='spot')"
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--filter` | | CEL filter expression |
+
+### `gn asset categories`
+
+List all asset categories, optionally over a CEL-filtered subset of assets.
+
+```bash
+gn asset categories
+gn asset categories --filter "asset.semantic_tags.exists(tag,tag=='erc20')"
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--filter` | | CEL filter expression |
+
+### `gn asset blockchains`
+
+List all blockchains on which at least one asset is supported, optionally over a CEL-filtered subset of assets.
+
+```bash
+gn asset blockchains
+gn asset blockchains --filter "asset.id=='USDT'"
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--filter` | | CEL filter expression |
+
+### `gn metric tags`
+
+List all tags used across metric metadata.
+
+```bash
+gn metric tags
+```
+
 ### `gn metric list`
 
 List all available metrics, optionally filtered by [metadata query parameters](https://docs.glassnode.com/basic-api/metadata#query-parameters-1).

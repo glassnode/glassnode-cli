@@ -32,6 +32,17 @@ type AssetsResponse struct {
 	Data []Asset `json:"data"`
 }
 
+// NamesResponse is the response of the metadata list endpoints
+// (/v1/metadata/tags, /v1/metadata/assets/tags, ...): {"data":[{"name":"..."},...]}.
+type NamesResponse struct {
+	Data []NameEntry `json:"data"`
+}
+
+// NameEntry is a single named value in a names response.
+type NameEntry struct {
+	Name string `json:"name"`
+}
+
 type MetricMetadata struct {
 	Path          string              `json:"path,omitempty"`
 	Tier          float64             `json:"tier,omitempty"`
@@ -125,6 +136,28 @@ func (c *Client) ListAssets(ctx context.Context, filter string) ([]Asset, error)
 		return nil, fmt.Errorf("decoding assets response: %w", err)
 	}
 	return resp.Data, nil
+}
+
+// ListNames lists the named values from a metadata list endpoint such as
+// /v1/metadata/tags or /v1/metadata/assets/categories, optionally filtered by a CEL expression.
+func (c *Client) ListNames(ctx context.Context, path string, filter string) ([]string, error) {
+	params := map[string]string{}
+	if filter != "" {
+		params["filter"] = filter
+	}
+	body, err := c.Do(ctx, "GET", path, params)
+	if err != nil {
+		return nil, fmt.Errorf("listing %s: %w", path, err)
+	}
+	var resp NamesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decoding %s response: %w", path, err)
+	}
+	names := make([]string, 0, len(resp.Data))
+	for _, e := range resp.Data {
+		names = append(names, e.Name)
+	}
+	return names, nil
 }
 
 // ListMetrics lists available metric paths, optionally filtered by query parameters.
