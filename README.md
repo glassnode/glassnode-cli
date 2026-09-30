@@ -34,6 +34,19 @@ Download the archive for your OS and architecture from [Releases](https://github
 
 ### From source
 
+Source builds use the private `glassnode/glassnode-api-go-client` module. Your
+GitHub account must have read access. Authenticate Git with GitHub (for example,
+`gh auth setup-git`) and include the module in your existing `GOPRIVATE` list:
+
+```bash
+go env -w GOPRIVATE=github.com/glassnode/glassnode-api-go-client
+```
+
+Preserve any existing entries in `GOPRIVATE`. Published CLI binaries do not
+require GitHub access to run. CI and source releases require the repository
+secret `GLASSNODE_SDK_READ_TOKEN`, scoped to read the private SDK repository;
+fork pull requests require a trusted maintainer build.
+
 ```bash
 go install github.com/glassnode/glassnode-cli@latest
 ```

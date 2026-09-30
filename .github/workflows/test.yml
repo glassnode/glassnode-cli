@@ -2,12 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/GN-159-extract-go-api-client']
   pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/glassnode/glassnode-api-go-client
     steps:
       - uses: actions/checkout@v4
 
@@ -15,11 +17,28 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Authenticate private SDK dependency
+        env:
+          GH_TOKEN: ${{ secrets.GLASSNODE_SDK_READ_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "GLASSNODE_SDK_READ_TOKEN must grant read access to glassnode/glassnode-api-go-client. Fork PRs require a trusted maintainer build."
+            exit 1
+          fi
+          gh auth setup-git
+          go mod download
+
       - name: Vet
+        env:
+          GH_TOKEN: ${{ secrets.GLASSNODE_SDK_READ_TOKEN }}
         run: go vet ./...
 
       - name: Build
+        env:
+          GH_TOKEN: ${{ secrets.GLASSNODE_SDK_READ_TOKEN }}
         run: go build ./...
 
       - name: Test
-        run: go test ./...
+        env:
+          GH_TOKEN: ${{ secrets.GLASSNODE_SDK_READ_TOKEN }}
+        run: go test -race ./...

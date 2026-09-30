@@ -305,7 +305,7 @@ func TestPrintTable_MetricMetadataWithOptionalFields(t *testing.T) {
 			Group: "Market",
 			Tags:  []string{"price", "market"},
 		},
-		Timerange:  &api.Timerange{Min: 1609459200, Max: 1735689600},
+		TimeRange:  &api.Timerange{Min: 1609459200, Max: 1735689600},
 		Parameters: map[string][]string{"a": {"BTC", "ETH"}, "i": {"24h"}},
 	}
 	if err := PrintTable(&buf, meta, ""); err != nil {

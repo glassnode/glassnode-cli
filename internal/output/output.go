@@ -247,9 +247,9 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 
 func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
 	fmt.Fprintf(w, "Path:           %s\n", m.Path)
-	fmt.Fprintf(w, "Tier:           %.0f\n", m.Tier)
+	fmt.Fprintf(w, "Tier:           %d\n", m.Tier)
 	fmt.Fprintf(w, "Bulk Supported: %t\n", m.BulkSupported)
-	fmt.Fprintf(w, "PIT:            %t\n", m.IsPit)
+	fmt.Fprintf(w, "PIT:            %t\n", m.IsPIT)
 	if m.Descriptors != nil {
 		if m.Descriptors.Name != "" {
 			fmt.Fprintf(w, "Name:           %s\n", m.Descriptors.Name)
@@ -261,8 +261,8 @@ func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
 			fmt.Fprintf(w, "Tags:           %s\n", strings.Join(m.Descriptors.Tags, ", "))
 		}
 	}
-	if m.Timerange != nil {
-		fmt.Fprintf(w, "Timerange:      %d - %d\n", m.Timerange.Min, m.Timerange.Max)
+	if m.TimeRange != nil {
+		fmt.Fprintf(w, "Timerange:      %d - %d\n", m.TimeRange.Min, m.TimeRange.Max)
 	}
 	if len(m.Parameters) > 0 {
 		fmt.Fprintln(w, "Parameters:")

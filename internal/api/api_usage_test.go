@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
+
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
 
 func TestGetAPIUsage(t *testing.T) {
@@ -70,7 +72,8 @@ func TestGetAPIUsage_InvalidJSONReturnsError(t *testing.T) {
 		t.Fatal("expected error for invalid JSON")
 	}
 
-	if !strings.Contains(err.Error(), "decoding API usage response") {
-		t.Errorf("error = %v, want wrapping decode message", err)
+	var decode *glassnode.DecodeError
+	if !errors.As(err, &decode) || decode.Endpoint != "/v1/user/api_usage" {
+		t.Errorf("error = %v, want typed API usage decode error", err)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
 
 type DataPoint struct {
@@ -21,28 +23,48 @@ type BulkResponse struct {
 	Data []BulkDataPoint `json:"data"`
 }
 
+// UnmarshalJSON keeps the CLI's historical dynamic number/output behavior.
+func (p *DataPoint) UnmarshalJSON(data []byte) error {
+	type wire DataPoint
+	return json.Unmarshal(data, (*wire)(p))
+}
+
 func (c *Client) GetMetric(ctx context.Context, path string, params map[string]string) ([]DataPoint, error) {
-	normalized := NormalizePath(path)
-	body, err := c.Do(ctx, "GET", "/v1/metrics"+normalized, params)
+	client, err := c.sdk()
 	if err != nil {
-		return nil, fmt.Errorf("getting metric: %w", err)
+		return nil, err
 	}
 	var points []DataPoint
-	if err := json.Unmarshal(body, &points); err != nil {
-		return nil, fmt.Errorf("decoding metric response: %w", err)
+	if err := client.GetMetric(ctx, path, &glassnode.MetricParams{Extra: queryValues(params, nil)}, &points); err != nil {
+		return nil, fmt.Errorf("getting metric: %w", err)
 	}
 	return points, nil
 }
 
-func (c *Client) GetMetricBulk(ctx context.Context, path string, params map[string]string, repeatedParams map[string][]string) (*BulkResponse, error) {
-	normalized := NormalizePath(path)
-	body, err := c.DoWithRepeatedParams(ctx, "GET", "/v1/metrics"+normalized+"/bulk", params, repeatedParams)
+func (c *Client) GetMetricBulk(ctx context.Context, path string, params map[string]string, repeated map[string][]string) (*BulkResponse, error) {
+	client, err := c.sdk()
+	if err != nil {
+		return nil, err
+	}
+	points, err := client.GetBulkMetric(ctx, path, &glassnode.MetricParams{Extra: queryValues(params, repeated)})
 	if err != nil {
 		return nil, fmt.Errorf("getting bulk metric: %w", err)
 	}
-	var resp BulkResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decoding bulk metric response: %w", err)
+	response := &BulkResponse{Data: make([]BulkDataPoint, 0, len(points))}
+	for _, point := range points {
+		entries := make([]map[string]interface{}, 0, len(point.Bulk))
+		for _, entry := range point.Bulk {
+			var value any
+			if entry.Value != nil {
+				value = *entry.Value
+			}
+			row := map[string]interface{}{"a": entry.Asset, "v": value}
+			if entry.Network != "" {
+				row["network"] = entry.Network
+			}
+			entries = append(entries, row)
+		}
+		response.Data = append(response.Data, BulkDataPoint{T: point.Timestamp, Bulk: entries})
 	}
-	return &resp, nil
+	return response, nil
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,44 +9,132 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 	"github.com/glassnode/glassnode-cli/internal/config"
 	"github.com/glassnode/glassnode-cli/internal/oauth"
 	"github.com/glassnode/glassnode-cli/internal/version"
 )
 
-const (
-	defaultHTTPTimeout = 1 * time.Minute
-)
+var stderr io.Writer = os.Stderr
 
-var (
-	baseURL = "https://api.glassnode.com"
-
-	// stderr is where warning messages are written. Overridable in tests.
-	stderr io.Writer = os.Stderr
-)
-
+// Client adapts the public SDK to CLI authentication, configuration and output.
+// HTTP requests, retries, errors and endpoint decoding are owned by the SDK.
 type Client struct {
 	baseURL     string
 	apiKey      string
 	bearerToken string
 	httpClient  *http.Client
+	init        sync.Once
+	sdkClient   *glassnode.Client
+	initErr     error
 }
 
 func NewClient(apiKey, bearerToken string) *Client {
-	if u := os.Getenv("GLASSNODE_BASE_URL"); u != "" {
-		baseURL = u
+	baseURL := os.Getenv("GLASSNODE_BASE_URL")
+	if baseURL == "" {
+		baseURL = glassnode.DefaultBaseURL
 	}
+	return &Client{baseURL: baseURL, apiKey: apiKey, bearerToken: bearerToken,
+		httpClient: &http.Client{Timeout: time.Minute}}
+}
 
-	return &Client{
-		baseURL:     baseURL,
-		apiKey:      apiKey,
-		bearerToken: bearerToken,
-		httpClient: &http.Client{
-			Timeout: defaultHTTPTimeout,
-		},
+func (c *Client) sdk() (*glassnode.Client, error) {
+	c.init.Do(func() {
+		httpClient := *c.httpClient
+		if c.bearerToken != "" {
+			transport := httpClient.Transport
+			if transport == nil {
+				transport = http.DefaultTransport
+			}
+			httpClient.Transport = &oauthTransport{base: transport, token: c.bearerToken}
+		}
+		options := []glassnode.Option{
+			glassnode.WithBaseURL(c.baseURL), glassnode.WithHTTPClient(&httpClient),
+			glassnode.WithAPIKeyInQuery(), glassnode.WithUserAgent("glassnode-cli-" + version.Version),
+		}
+		if c.bearerToken != "" {
+			options = append(options, glassnode.WithBearerToken(c.bearerToken))
+		}
+		c.sdkClient, c.initErr = glassnode.NewClient(c.apiKey, options...)
+	})
+	return c.sdkClient, c.initErr
+}
+
+// oauthTransport preserves the CLI's refresh-on-401 behavior without teaching
+// the SDK about config files or OAuth session persistence.
+type oauthTransport struct {
+	base  http.RoundTripper
+	mu    sync.Mutex
+	token string
+}
+
+func (t *oauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.mu.Lock()
+	token := t.token
+	t.mu.Unlock()
+	request := req.Clone(req.Context())
+	request.Header.Set("Authorization", "Bearer "+token)
+	response, err := t.base.RoundTrip(request)
+	if err != nil || response.StatusCode != http.StatusUnauthorized {
+		return redactOAuthErrorResponse(response, token), err
 	}
+	t.mu.Lock()
+	fresh := t.token
+	var refreshErr error
+	if fresh == token {
+		fresh, refreshErr = oauth.ForceRefreshAccessToken(req.Context())
+		if refreshErr == nil && fresh != "" {
+			t.token = fresh
+		}
+	}
+	t.mu.Unlock()
+	if refreshErr != nil || fresh == "" || fresh == token {
+		if refreshErr != nil && !errors.Is(refreshErr, oauth.ErrSessionExpired) {
+			_, _ = fmt.Fprintln(stderr, "warning: OAuth refresh after HTTP 401 failed")
+		}
+		return response, nil
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	_ = response.Body.Close()
+	request = req.Clone(req.Context())
+	request.Header.Set("Authorization", "Bearer "+fresh)
+	response, err = t.base.RoundTrip(request)
+	return redactOAuthErrorResponse(response, fresh), err
+}
+
+// The SDK knows the original token; the CLI transport also redacts a rotated
+// token if an error body echoes it after refresh.
+func redactOAuthErrorResponse(response *http.Response, token string) *http.Response {
+	if response == nil || response.StatusCode < 300 || token == "" {
+		return response
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 4096))
+	_ = response.Body.Close()
+	if err != nil {
+		body = []byte("failed to read OAuth API error response")
+	}
+	text := strings.ReplaceAll(string(body), token, "[redacted]")
+	text = strings.ReplaceAll(text, url.QueryEscape(token), "[redacted]")
+	response.Body = io.NopCloser(bytes.NewBufferString(text))
+	response.ContentLength = int64(len(text))
+	return response
+}
+
+func queryValues(params map[string]string, repeated map[string][]string) url.Values {
+	q := url.Values{}
+	for key, value := range params {
+		q.Set(key, value)
+	}
+	for key, values := range repeated {
+		for _, value := range values {
+			q.Add(key, value)
+		}
+	}
+	return q
 }
 
 // ResolveAPIKey returns the first non-empty value from:
@@ -117,81 +206,13 @@ func (c *Client) Do(ctx context.Context, method, path string, params map[string]
 	return c.DoWithRepeatedParams(ctx, method, path, params, nil)
 }
 
-func (c *Client) DoWithRepeatedParams(ctx context.Context, method, path string, params map[string]string, repeatedParams map[string][]string) ([]byte, error) {
-	u, err := c.buildURL(path, params, repeatedParams)
+func (c *Client) DoWithRepeatedParams(ctx context.Context, method, path string, params map[string]string, repeated map[string][]string) ([]byte, error) {
+	if method != http.MethodGet {
+		return nil, fmt.Errorf("unsupported HTTP method %s", method)
+	}
+	client, err := c.sdk()
 	if err != nil {
 		return nil, err
 	}
-
-	body, status, err := c.sendOnce(ctx, method, u)
-	if err != nil {
-		return nil, err
-	}
-
-	// If we were using an OAuth bearer and the server returned Unauthorized, try exactly one refresh+retry.
-	// This handles the case where the access token was revoked before its expiry
-	if status == http.StatusUnauthorized && c.bearerToken != "" {
-		fresh, rerr := oauth.ForceRefreshAccessToken(ctx)
-		if rerr == nil && fresh != "" && fresh != c.bearerToken {
-			c.bearerToken = fresh
-			body, status, err = c.sendOnce(ctx, method, u)
-			if err != nil {
-				return nil, err
-			}
-		} else if rerr != nil && !errors.Is(rerr, oauth.ErrSessionExpired) {
-			_, _ = fmt.Fprintf(stderr, "warning: refresh after HTTP %d failed: %v\n", http.StatusUnauthorized, rerr)
-		}
-	}
-
-	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		if status == http.StatusTooManyRequests {
-			return nil, fmt.Errorf("HTTP %d: rate limit exceeded. %s", status, string(body))
-		}
-		return nil, fmt.Errorf("HTTP %d: %s", status, string(body))
-	}
-	return body, nil
-}
-
-func (c *Client) buildURL(path string, params map[string]string, repeatedParams map[string][]string) (*url.URL, error) {
-	u, err := url.Parse(c.baseURL + path)
-	if err != nil {
-		return nil, fmt.Errorf("parsing URL: %w", err)
-	}
-	q := u.Query()
-	if c.bearerToken == "" {
-		q.Set("api_key", c.apiKey)
-	}
-	for k, v := range params {
-		q.Set(k, v)
-	}
-	for k, vals := range repeatedParams {
-		for _, v := range vals {
-			q.Add(k, v)
-		}
-	}
-	u.RawQuery = q.Encode()
-	return u, nil
-}
-
-func (c *Client) sendOnce(ctx context.Context, method string, u *url.URL) ([]byte, int, error) {
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("User-Agent", "glassnode-cli-"+version.Version)
-	if c.bearerToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.bearerToken)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("executing request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("reading response: %w", err)
-	}
-	return body, resp.StatusCode, nil
+	return client.Raw(ctx, path, queryValues(params, repeated))
 }

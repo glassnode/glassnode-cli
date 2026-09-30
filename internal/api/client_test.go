@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	_ "embed"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -277,7 +278,22 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 		if authHdrs[0] != "Bearer stale" || authHdrs[1] != "Bearer fresh" {
 			t.Errorf("auth headers %v", authHdrs)
 		}
+		if _, err := client.Do(context.Background(), "GET", "/v1/anything", nil); err != nil {
+			t.Fatal(err)
+		}
+		if len(authHdrs) != 3 || authHdrs[2] != "Bearer fresh" {
+			t.Errorf("refreshed token was not reused: %v", authHdrs)
+		}
 	})
+}
+
+func TestOAuthErrorResponseRedactsRotatedToken(t *testing.T) {
+	response := &http.Response{StatusCode: 401, Body: io.NopCloser(strings.NewReader("rotated-secret"))}
+	response = redactOAuthErrorResponse(response, "rotated-secret")
+	body, err := io.ReadAll(response.Body)
+	if err != nil || strings.Contains(string(body), "rotated-secret") {
+		t.Fatalf("unredacted response: %s %v", body, err)
+	}
 }
 
 func TestDo_401WithAPIKey_NoRetry(t *testing.T) {
@@ -764,7 +780,7 @@ func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key", "")
+	client := NewClient("test-api-secret", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
