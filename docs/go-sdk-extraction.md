@@ -10,6 +10,7 @@ OAuth refresh, dry-run URL rendering, asset pruning, credit presentation and
 historical output shapes. Endpoint HTTP handling, retries and decoding are
 provided by the SDK. The SDK defaults to header authentication; the CLI
 explicitly retains query API keys to preserve current dry-run and wire behavior.
+OAuth uses the SDK token-source API alongside the CLI refresh-on-401 transport.
 SDK clients are initialized lazily once per CLI adapter and reused.
 
 GET calls now retry transport/read failures, 429 and 5xx responses twice with

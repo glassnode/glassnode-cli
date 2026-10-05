@@ -3,7 +3,7 @@ module github.com/glassnode/glassnode-cli
 go 1.24.0
 
 require (
-	github.com/glassnode/glassnode-api-go-client v0.0.0-20260930201957-f2813ef697f6
+	github.com/glassnode/glassnode-api-go-client v0.1.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1

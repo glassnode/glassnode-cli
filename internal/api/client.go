@@ -45,21 +45,25 @@ func NewClient(apiKey, bearerToken string) *Client {
 func (c *Client) sdk() (*glassnode.Client, error) {
 	c.init.Do(func() {
 		httpClient := *c.httpClient
+		options := []glassnode.Option{
+			glassnode.WithBaseURL(c.baseURL),
+			glassnode.WithUserAgent("glassnode-cli-" + version.Version),
+		}
+		key := c.apiKey
 		if c.bearerToken != "" {
 			transport := httpClient.Transport
 			if transport == nil {
 				transport = http.DefaultTransport
 			}
-			httpClient.Transport = &oauthTransport{base: transport, token: c.bearerToken}
+			auth := &oauthTransport{base: transport, token: c.bearerToken}
+			httpClient.Transport = auth
+			options = append(options, glassnode.WithTokenSource(auth))
+			key = ""
+		} else {
+			options = append(options, glassnode.WithAPIKeyInQuery())
 		}
-		options := []glassnode.Option{
-			glassnode.WithBaseURL(c.baseURL), glassnode.WithHTTPClient(&httpClient),
-			glassnode.WithAPIKeyInQuery(), glassnode.WithUserAgent("glassnode-cli-" + version.Version),
-		}
-		if c.bearerToken != "" {
-			options = append(options, glassnode.WithBearerToken(c.bearerToken))
-		}
-		c.sdkClient, c.initErr = glassnode.NewClient(c.apiKey, options...)
+		options = append(options, glassnode.WithHTTPClient(&httpClient))
+		c.sdkClient, c.initErr = glassnode.NewClient(key, options...)
 	})
 	return c.sdkClient, c.initErr
 }
@@ -70,6 +74,16 @@ type oauthTransport struct {
 	base  http.RoundTripper
 	mu    sync.Mutex
 	token string
+}
+
+// Token supplies the current session token to the SDK on each attempt.
+func (t *oauthTransport) Token(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.token, nil
 }
 
 func (t *oauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
