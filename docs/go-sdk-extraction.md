@@ -1,31 +1,26 @@
-# Go SDK extraction — GN-159
+# Go SDK extraction
 
-The reusable API implementation is now in the private
+The reusable API implementation lives in the
 [`glassnode-api-go-client`](https://github.com/glassnode/glassnode-api-go-client)
-module. The design and TS feature mapping live in that repository's
-`docs/design.md`. Tracking: https://glassnode.atlassian.net/browse/GN-159
+module; its design notes are in that repository's `docs/design.md`.
 
 `internal/api` is a CLI adapter. It retains environment/config resolution,
-OAuth refresh, dry-run URL rendering, asset pruning, credit presentation and
-historical output shapes. Endpoint HTTP handling, retries and decoding are
-provided by the SDK. The API key is sent in the
-X-Api-Key header, as the SDK does by default, so it stays out of URLs and
-access logs; --dry-run prints the URL without it and notes the header on stderr.
-OAuth sessions reach the SDK through its TokenRefresher interface: the CLI
-supplies the current token and refreshes it once when the API answers 401.
-SDK clients are initialized lazily once per CLI adapter and reused.
+OAuth login and refresh, dry-run URL rendering, asset pruning, credit
+presentation and the historical output shapes. Endpoint HTTP handling,
+retries and decoding are provided by the SDK.
 
-GET calls now retry transport/read failures, 429 and 5xx responses twice with
-jitter. Context cancellation interrupts calls and backoff. Errors expose SDK
-types and redact credentials. Redirects are no longer followed.
+- The API key is sent in the `X-Api-Key` header, as the SDK does by default, so
+  it stays out of URLs and access logs; `--dry-run` prints the URL without it
+  and notes the header on stderr.
+- OAuth sessions reach the SDK through its `TokenRefresher` interface: the CLI
+  supplies the current token and refreshes it once when the API answers 401.
+- SDK clients are initialized lazily once per CLI adapter and reused.
+- GET calls retry transport failures, 429 and 5xx responses with jitter and
+  honour the API's rate-limit reset. Context cancellation interrupts calls and
+  backoff. Errors expose SDK types and redact credentials. Redirects are not
+  followed.
+- Bulk metrics require `--since`; ranges over the API's per-request limit are
+  fetched in windows with `--split`.
 
-The CLI remains public while the SDK is private, so source builds need GitHub
-read access. Set `GOPRIVATE` and authenticate Git as described in README.md.
-CI/release jobs use `GLASSNODE_SDK_READ_TOKEN`; no credential is committed.
-The token must be configured before merging this branch. Do not use
-`pull_request_target` to expose it to untrusted fork code.
-
-For local SDK development, create a temporary Go workspace outside either repo
-and use both checkouts. If module graph resolution tries to download the
-version in the CLI's go.mod, add a version-specific replace to that temporary
-workspace. Never commit an absolute filesystem replace into the CLI module.
+For local SDK development, use a temporary `go.work` outside both repositories
+with both checkouts; never commit a filesystem `replace` into the CLI module.
