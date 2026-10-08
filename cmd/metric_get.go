@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/glassnode/glassnode-cli/internal/api"
 	"github.com/glassnode/glassnode-cli/internal/output"
@@ -70,18 +71,35 @@ var metricGetCmd = &cobra.Command{
 				repeatedParams["e"] = exchanges
 			}
 
+			// The API requires s for bulk requests and limits the range per
+			// request; longer ranges are fetched in several requests with --split.
+			plan, err := api.PlanBulk(params, time.Now())
+			if err != nil {
+				return err
+			}
+			split, _ := cmd.Flags().GetBool("split")
+			windows := plan.Windows()
+			if len(windows) > 1 && !split {
+				return plan.RangeError()
+			}
+			if len(windows) > 1 {
+				fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe())
+			}
+
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 			if dryRun {
-				u, err := client.BuildURL("/v1/metrics"+path+"/bulk", params, repeatedParams)
-				if err != nil {
-					return err
+				for _, w := range windows {
+					u, err := client.BuildURL("/v1/metrics"+path+"/bulk", api.WindowParams(params, w), repeatedParams)
+					if err != nil {
+						return err
+					}
+					redacted, _ := api.RedactAPIKeyFromURL(u)
+					fmt.Println(redacted)
 				}
-				redacted, _ := api.RedactAPIKeyFromURL(u)
-				fmt.Println(redacted)
 				return nil
 			}
 
-			resp, err := client.GetMetricBulk(cmd.Context(), path, params, repeatedParams)
+			resp, err := client.GetMetricBulkSplit(cmd.Context(), path, params, repeatedParams, plan)
 			if err != nil {
 				return err
 			}
@@ -127,4 +145,5 @@ func init() {
 	metricGetCmd.Flags().StringP("currency", "c", "", "native or usd")
 	metricGetCmd.Flags().StringArrayP("exchange", "e", nil, "exchange filter (repeatable for bulk)")
 	metricGetCmd.Flags().StringP("network", "n", "", "network filter")
+	metricGetCmd.Flags().Bool("split", false, "bulk only: fetch a range longer than the API allows per request in several requests")
 }
