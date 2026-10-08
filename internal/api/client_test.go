@@ -598,7 +598,7 @@ func TestGetMetricBulk(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	resp, err := client.GetMetricBulk(context.Background(), "/market/price_usd_close", nil, nil)
+	resp, err := client.GetMetricBulk(context.Background(), "/market/price_usd_close", map[string]string{"s": "1770076800"}, nil)
 	if err != nil {
 		t.Fatalf("GetMetricBulk: %v", err)
 	}
@@ -683,7 +683,7 @@ func TestGetMetricBulk_InvalidJSONReturnsError(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.GetMetricBulk(context.Background(), "/market/price", nil, nil)
+	_, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "1"}, nil)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
@@ -762,7 +762,7 @@ func TestGetMetricBulk_EmptyData(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	resp, err := client.GetMetricBulk(context.Background(), "/market/price", nil, nil)
+	resp, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "1"}, nil)
 	if err != nil {
 		t.Fatalf("GetMetricBulk: %v", err)
 	}
@@ -827,5 +827,47 @@ func TestRedactAPIKeyFromURL_InvalidURL(t *testing.T) {
 	_, err := RedactAPIKeyFromURL("://invalid")
 	if err == nil {
 		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestGetMetricBulk_KeepsAllSelectors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"t":1,"bulk":[
+			{"a":"BTC","e":"binance","v":1},
+			{"a":"ETH","category":"more_10y","v":null}]}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("key", "")
+	client.baseURL = server.URL
+	client.httpClient = server.Client()
+
+	resp, err := client.GetMetricBulk(context.Background(), "/distribution/balance_exchanges", map[string]string{"s": "1"}, nil)
+	if err != nil {
+		t.Fatalf("GetMetricBulk: %v", err)
+	}
+	rows := resp.Data[0].Bulk
+	if rows[0]["e"] != "binance" || rows[0]["a"] != "BTC" || rows[0]["v"] != 1.0 {
+		t.Errorf("exchange selector lost: %v", rows[0])
+	}
+	if rows[1]["category"] != "more_10y" || rows[1]["v"] != nil {
+		t.Errorf("category selector lost: %v", rows[1])
+	}
+}
+
+func TestMetricParamsMapsTypedFields(t *testing.T) {
+	p, err := metricParams(map[string]string{"s": "100", "u": "200", "i": "24h", "c": "USD", "a": "BTC", "network": "eth"}, map[string][]string{"e": {"binance", "coinbase"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Since.Unix() != 100 || p.Until.Unix() != 200 || p.Interval != "24h" || p.Currency != "USD" || p.Asset != "BTC" || len(p.Exchanges) != 2 {
+		t.Errorf("typed fields: %+v", p)
+	}
+	if p.Extra.Get("network") != "eth" || p.Extra.Has("s") || p.Extra.Has("a") || p.Extra.Has("e") {
+		t.Errorf("extra: %v", p.Extra)
+	}
+	if _, err := metricParams(map[string]string{"s": "yesterday"}, nil); err == nil {
+		t.Error("accepted non-numeric since")
 	}
 }
