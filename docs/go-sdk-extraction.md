@@ -11,7 +11,8 @@ historical output shapes. Endpoint HTTP handling, retries and decoding are
 provided by the SDK. The API key is sent in the
 X-Api-Key header, as the SDK does by default, so it stays out of URLs and
 access logs; --dry-run prints the URL without it and notes the header on stderr.
-OAuth uses the SDK token-source API alongside the CLI refresh-on-401 transport.
+OAuth sessions reach the SDK through its TokenRefresher interface: the CLI
+supplies the current token and refreshes it once when the API answers 401.
 SDK clients are initialized lazily once per CLI adapter and reused.
 
 GET calls now retry transport/read failures, 429 and 5xx responses twice with

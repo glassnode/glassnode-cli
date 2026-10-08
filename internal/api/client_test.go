@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	_ "embed"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -286,15 +285,6 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 			t.Errorf("refreshed token was not reused: %v", authHdrs)
 		}
 	})
-}
-
-func TestOAuthErrorResponseRedactsRotatedToken(t *testing.T) {
-	response := &http.Response{StatusCode: 401, Body: io.NopCloser(strings.NewReader("rotated-secret"))}
-	response = redactOAuthErrorResponse(response, "rotated-secret")
-	body, err := io.ReadAll(response.Body)
-	if err != nil || strings.Contains(string(body), "rotated-secret") {
-		t.Fatalf("unredacted response: %s %v", body, err)
-	}
 }
 
 func TestDo_401WithAPIKey_NoRetry(t *testing.T) {

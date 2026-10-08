@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -51,13 +49,7 @@ func (c *Client) sdk() (*glassnode.Client, error) {
 		}
 		key := c.apiKey
 		if c.bearerToken != "" {
-			transport := httpClient.Transport
-			if transport == nil {
-				transport = http.DefaultTransport
-			}
-			auth := &oauthTransport{base: transport, token: c.bearerToken}
-			httpClient.Transport = auth
-			options = append(options, glassnode.WithTokenSource(auth))
+			options = append(options, glassnode.WithTokenSource(&sessionTokens{token: c.bearerToken}))
 			key = ""
 		}
 		options = append(options, glassnode.WithHTTPClient(&httpClient))
@@ -76,74 +68,39 @@ func (c *Client) AuthHeader() string {
 	return "X-Api-Key"
 }
 
-// oauthTransport preserves the CLI's refresh-on-401 behavior without teaching
-// the SDK about config files or OAuth session persistence.
-type oauthTransport struct {
-	base  http.RoundTripper
+// sessionTokens hands the CLI's OAuth session token to the SDK and refreshes
+// it when the API rejects it, so a token revoked before its expiry is replaced
+// once without teaching the SDK about config files or OAuth persistence.
+type sessionTokens struct {
 	mu    sync.Mutex
 	token string
 }
 
-// Token supplies the current session token to the SDK on each attempt.
-func (t *oauthTransport) Token(ctx context.Context) (string, error) {
+// Token returns the current session token.
+func (s *sessionTokens) Token(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.token, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.token, nil
 }
 
-func (t *oauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	t.mu.Lock()
-	token := t.token
-	t.mu.Unlock()
-	request := req.Clone(req.Context())
-	request.Header.Set("Authorization", "Bearer "+token)
-	response, err := t.base.RoundTrip(request)
-	if err != nil || response.StatusCode != http.StatusUnauthorized {
-		return redactOAuthErrorResponse(response, token), err
-	}
-	t.mu.Lock()
-	fresh := t.token
-	var refreshErr error
-	if fresh == token {
-		fresh, refreshErr = oauth.ForceRefreshAccessToken(req.Context())
-		if refreshErr == nil && fresh != "" {
-			t.token = fresh
-		}
-	}
-	t.mu.Unlock()
-	if refreshErr != nil || fresh == "" || fresh == token {
-		if refreshErr != nil && !errors.Is(refreshErr, oauth.ErrSessionExpired) {
+// Refresh exchanges the stored refresh token for a new access token after a
+// 401 and keeps it for the following requests. An expired session is reported
+// to the user through the SDK's AuthError.
+func (s *sessionTokens) Refresh(ctx context.Context) (string, error) {
+	fresh, err := oauth.ForceRefreshAccessToken(ctx)
+	if err != nil {
+		if !errors.Is(err, oauth.ErrSessionExpired) {
 			_, _ = fmt.Fprintln(stderr, "warning: OAuth refresh after HTTP 401 failed")
 		}
-		return response, nil
+		return "", err
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
-	_ = response.Body.Close()
-	request = req.Clone(req.Context())
-	request.Header.Set("Authorization", "Bearer "+fresh)
-	response, err = t.base.RoundTrip(request)
-	return redactOAuthErrorResponse(response, fresh), err
-}
-
-// The SDK knows the original token; the CLI transport also redacts a rotated
-// token if an error body echoes it after refresh.
-func redactOAuthErrorResponse(response *http.Response, token string) *http.Response {
-	if response == nil || response.StatusCode < 300 || token == "" {
-		return response
-	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, 4096))
-	_ = response.Body.Close()
-	if err != nil {
-		body = []byte("failed to read OAuth API error response")
-	}
-	text := strings.ReplaceAll(string(body), token, "[redacted]")
-	text = strings.ReplaceAll(text, url.QueryEscape(token), "[redacted]")
-	response.Body = io.NopCloser(bytes.NewBufferString(text))
-	response.ContentLength = int64(len(text))
-	return response
+	s.mu.Lock()
+	s.token = fresh
+	s.mu.Unlock()
+	return fresh, nil
 }
 
 func queryValues(params map[string]string, repeated map[string][]string) url.Values {
