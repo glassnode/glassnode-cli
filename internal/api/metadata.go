@@ -91,32 +91,14 @@ func (c *Client) DescribeMetric(ctx context.Context, path, asset string) (*Metri
 	return client.GetMetricMetadata(ctx, path, &glassnode.MetricParams{Asset: asset})
 }
 
-// BuildURL constructs the full request URL without executing the request.
+// BuildURL constructs the request URL without executing the request. The
+// credential is not part of it: it travels in the header named by AuthHeader.
 func (c *Client) BuildURL(path string, params map[string]string, repeatedParams map[string][]string) (string, error) {
 	u, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return "", err
 	}
-	q := queryValues(params, repeatedParams)
-	if c.bearerToken == "" {
-		q.Set("api_key", c.apiKey)
-	}
-	u.RawQuery = q.Encode()
-	return u.String(), nil
-}
-
-// RedactAPIKeyFromURL returns a copy of the URL with the api_key query parameter
-// replaced by a placeholder, for safe display (e.g. dry-run output).
-func RedactAPIKeyFromURL(raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", err
-	}
-	q := u.Query()
-	if q.Has("api_key") {
-		q.Set("api_key", "***")
-		u.RawQuery = q.Encode()
-	}
+	u.RawQuery = queryValues(params, repeatedParams).Encode()
 	return u.String(), nil
 }
 

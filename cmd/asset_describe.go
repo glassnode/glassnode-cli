@@ -33,8 +33,7 @@ var assetDescribeCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			redacted, _ := api.RedactAPIKeyFromURL(u)
-			_, _ = fmt.Println(redacted)
+			printDryRun(cmd, client, u)
 			return nil
 		}
 

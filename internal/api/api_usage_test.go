@@ -20,7 +20,7 @@ func TestGetAPIUsage(t *testing.T) {
 	var gotPath, gotAPIKey string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		gotAPIKey = r.URL.Query().Get("api_key")
+		gotAPIKey = r.Header.Get("X-Api-Key")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(fixture)
 	}))
@@ -39,7 +39,7 @@ func TestGetAPIUsage(t *testing.T) {
 		t.Errorf("path = %q, want /v1/user/api_usage", gotPath)
 	}
 	if gotAPIKey != "my-key" {
-		t.Errorf("api_key = %q, want my-key", gotAPIKey)
+		t.Errorf("X-Api-Key = %q, want my-key", gotAPIKey)
 	}
 	if out.CreditsUsed != 6 {
 		t.Errorf("CreditsUsed = %d, want 6", out.CreditsUsed)

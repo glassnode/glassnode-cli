@@ -59,13 +59,21 @@ func (c *Client) sdk() (*glassnode.Client, error) {
 			httpClient.Transport = auth
 			options = append(options, glassnode.WithTokenSource(auth))
 			key = ""
-		} else {
-			options = append(options, glassnode.WithAPIKeyInQuery())
 		}
 		options = append(options, glassnode.WithHTTPClient(&httpClient))
 		c.sdkClient, c.initErr = glassnode.NewClient(key, options...)
 	})
 	return c.sdkClient, c.initErr
+}
+
+// AuthHeader names the header that carries the credential. The SDK sends the
+// API key in X-Api-Key rather than in the URL, so it stays out of proxy and
+// access logs; dry-run output therefore shows the URL without it.
+func (c *Client) AuthHeader() string {
+	if c.bearerToken != "" {
+		return "Authorization: Bearer"
+	}
+	return "X-Api-Key"
 }
 
 // oauthTransport preserves the CLI's refresh-on-401 behavior without teaching

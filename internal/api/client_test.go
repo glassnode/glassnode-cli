@@ -174,9 +174,10 @@ func TestResolveAuth_RefreshesExpiredAccessToken(t *testing.T) {
 }
 
 func TestDo_SendsCorrectURL(t *testing.T) {
-	var capturedURL string
+	var capturedURL, capturedKey string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedURL = r.URL.String()
+		capturedKey = r.Header.Get("X-Api-Key")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("{}"))
 	}))
@@ -190,8 +191,8 @@ func TestDo_SendsCorrectURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	if !strings.Contains(capturedURL, "api_key=my-api-key") {
-		t.Errorf("URL %q missing api_key param", capturedURL)
+	if capturedKey != "my-api-key" || strings.Contains(capturedURL, "api_key") {
+		t.Errorf("URL %q header %q: the key must travel in X-Api-Key only", capturedURL, capturedKey)
 	}
 	if !strings.Contains(capturedURL, "a=b") {
 		t.Errorf("URL %q missing a=b param", capturedURL)
@@ -376,32 +377,14 @@ func TestBuildURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildURL: %v", err)
 	}
-	if !strings.Contains(got, "api_key=test-key") {
-		t.Errorf("URL %q missing api_key", got)
+	if strings.Contains(got, "api_key") || strings.Contains(got, "test-key") {
+		t.Errorf("URL %q must not contain the API key", got)
 	}
 	if !strings.Contains(got, "p=v") {
 		t.Errorf("URL %q missing p=v", got)
 	}
 	if !strings.Contains(got, "a=x") {
 		t.Errorf("URL %q missing a=x", got)
-	}
-}
-
-func TestRedactAPIKeyFromURL(t *testing.T) {
-	raw := "https://api.example.com/v1/path?api_key=secret123&a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
-	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
-	}
-	if strings.Contains(redacted, "secret123") {
-		t.Errorf("redacted URL should not contain secret: %q", redacted)
-	}
-	// Placeholder may be URL-encoded as %2A%2A%2A
-	if !strings.Contains(redacted, "api_key=***") && !strings.Contains(redacted, "api_key=%2A%2A%2A") {
-		t.Errorf("redacted URL should contain api_key redaction: %q", redacted)
-	}
-	if !strings.Contains(redacted, "a=b") {
-		t.Errorf("redacted URL should preserve other params: %q", redacted)
 	}
 }
 
@@ -793,40 +776,6 @@ func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Invalid API key") {
 		t.Errorf("error should include response body: %v", err)
-	}
-}
-
-// RedactAPIKeyFromURL edge cases (point 7)
-
-func TestRedactAPIKeyFromURL_NoAPIKeyParam(t *testing.T) {
-	raw := "https://api.example.com/v1/path?a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
-	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
-	}
-	if redacted != raw {
-		t.Errorf("URL without api_key should be unchanged: got %q", redacted)
-	}
-}
-
-func TestRedactAPIKeyFromURL_EmptyAPIKey(t *testing.T) {
-	raw := "https://api.example.com/v1/path?api_key=&a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
-	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
-	}
-	if !strings.Contains(redacted, "a=b") {
-		t.Errorf("should preserve other params: %q", redacted)
-	}
-	if !strings.Contains(redacted, "api_key=") {
-		t.Errorf("should still have api_key param: %q", redacted)
-	}
-}
-
-func TestRedactAPIKeyFromURL_InvalidURL(t *testing.T) {
-	_, err := RedactAPIKeyFromURL("://invalid")
-	if err == nil {
-		t.Error("expected error for invalid URL")
 	}
 }
 

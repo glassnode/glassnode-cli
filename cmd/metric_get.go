@@ -93,8 +93,7 @@ var metricGetCmd = &cobra.Command{
 					if err != nil {
 						return err
 					}
-					redacted, _ := api.RedactAPIKeyFromURL(u)
-					fmt.Println(redacted)
+					printDryRun(cmd, client, u)
 				}
 				return nil
 			}
@@ -121,8 +120,7 @@ var metricGetCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			redacted, _ := api.RedactAPIKeyFromURL(u)
-			fmt.Println(redacted)
+			printDryRun(cmd, client, u)
 			return nil
 		}
 

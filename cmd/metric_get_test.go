@@ -75,7 +75,7 @@ func runCLI(t *testing.T, env []string, args ...string) (string, string, error) 
 	return outBuf.String(), errBuf.String(), runErr
 }
 
-func TestMetricGet_DryRun_PrintsURLWithRedactedKey(t *testing.T) {
+func TestMetricGet_DryRun_PrintsURLWithoutKey(t *testing.T) {
 	stdout, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir()},
 		"metric", "get", "/market/price_usd_close",
 		"--api-key", "secret-key",
@@ -87,8 +87,11 @@ func TestMetricGet_DryRun_PrintsURLWithRedactedKey(t *testing.T) {
 	if strings.Contains(stdout, "secret-key") {
 		t.Errorf("stdout must not contain API key: %s", stdout)
 	}
-	if !strings.Contains(stdout, "api_key=***") && !strings.Contains(stdout, "api_key=%2A%2A%2A") {
-		t.Errorf("stdout should contain redacted api_key: %s", stdout)
+	if strings.Contains(stdout, "api_key") {
+		t.Errorf("stdout must not contain an api_key parameter: %s", stdout)
+	}
+	if !strings.Contains(stderr, "X-Api-Key") {
+		t.Errorf("stderr should say the key is sent in the X-Api-Key header: %s", stderr)
 	}
 	if !strings.Contains(stdout, "/v1/metrics") || !strings.Contains(stdout, "market/price_usd_close") {
 		t.Errorf("stdout should contain metric path: %s", stdout)

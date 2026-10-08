@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/glassnode/glassnode-cli/internal/api"
 	"github.com/glassnode/glassnode-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -27,8 +25,7 @@ var metricListCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			redacted, _ := api.RedactAPIKeyFromURL(u)
-			fmt.Println(redacted)
+			printDryRun(cmd, client, u)
 			return nil
 		}
 

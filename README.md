@@ -296,7 +296,7 @@ OAuth session fields (`oauth-access-token`, `oauth-refresh-token`, `oauth-expire
 |------|-------|-------------|
 | `--api-key` | | Glassnode API key |
 | `--output` | `-o` | Output format: `json` (default), `csv`, `table` |
-| `--dry-run` | | Print the request URL without executing |
+| `--dry-run` | | Print the request URL without executing; the API key is sent in the `X-Api-Key` header and is not part of the URL |
 | `--timestamp-format` | | Timestamp format in output |
 
 ## Output Formats
