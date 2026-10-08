@@ -204,7 +204,6 @@ gn metric list --from-exchange binance --to-exchange coinbase
 | `--assets` | | Filter by multiple assets (repeat for each, e.g. `--assets BTC --assets ETH`) |
 | `--currency` | `-c` | Filter by currency (e.g. `native`, `usd`) |
 | `--exchange` | `-e` | Filter by exchange (e.g. `binance`, `coinbase`) |
-| `--format` | `-f` | Filter by response format (e.g. `json`, `csv`) |
 | `--interval` | `-i` | Filter by time interval (e.g. `1h`, `24h`) |
 | `--from-exchange` | | Source exchange for inter-exchange metrics |
 | `--to-exchange` | | Destination exchange for inter-exchange metrics |

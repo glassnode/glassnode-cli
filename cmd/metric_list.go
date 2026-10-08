@@ -64,9 +64,6 @@ func metricListParamsFromFlags(cmd *cobra.Command) (map[string]string, map[strin
 	if v, _ := cmd.Flags().GetString("exchange"); v != "" {
 		params["e"] = v
 	}
-	if v, _ := cmd.Flags().GetString("format"); v != "" {
-		params["f"] = v
-	}
 	if v, _ := cmd.Flags().GetString("interval"); v != "" {
 		params["i"] = v
 	}
@@ -100,7 +97,6 @@ func init() {
 	metricListCmd.Flags().StringArray("assets", nil, "filter by assets (multiple, e.g. --assets BTC --assets ETH)")
 	metricListCmd.Flags().StringP("currency", "c", "", "filter by currency (e.g. native, usd)")
 	metricListCmd.Flags().StringP("exchange", "e", "", "filter by exchange (e.g. binance, coinbase)")
-	metricListCmd.Flags().StringP("format", "f", "", "filter by response format (e.g. json, csv)")
 	metricListCmd.Flags().StringP("interval", "i", "", "filter by time interval (e.g. 1h, 24h)")
 	metricListCmd.Flags().String("from-exchange", "", "source exchange for inter-exchange metrics")
 	metricListCmd.Flags().String("to-exchange", "", "destination exchange for inter-exchange metrics")
