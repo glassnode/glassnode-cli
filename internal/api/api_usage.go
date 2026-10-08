@@ -15,8 +15,8 @@ type APIUsageResponse struct {
 	APIAddons   []APIAddon `json:"apiAddons"`
 }
 
-// CreditsPerMonth returns the largest addon credit value, or 0 when there are no addons
-func (a *APIUsageResponse) CreditsPerMonth() int {
+// CreditsLimit returns the largest addon credit value, or 0 when there are no addons
+func (a *APIUsageResponse) CreditsLimit() int {
 	var max int
 	for _, a := range a.APIAddons {
 		if a.Value > max {
@@ -27,24 +27,29 @@ func (a *APIUsageResponse) CreditsPerMonth() int {
 	return max
 }
 
-// CreditsSummary is the CLI response to the end user
+// CreditsSummary is the CLI response to the end user. CreditsLimit is the
+// allowance granted per CreditsPeriod, which depends on the account's products.
 type CreditsSummary struct {
-	CreditsLeft     int `json:"creditsLeft"`
-	CreditsPerMonth int `json:"creditsPerMonth"`
-	CreditsUsed     int `json:"creditsUsed"`
+	CreditsLeft   int           `json:"creditsLeft"`
+	CreditsLimit  int           `json:"creditsLimit"`
+	CreditsPeriod CreditsPeriod `json:"creditsPeriod"`
+	CreditsUsed   int           `json:"creditsUsed"`
 }
 
-func (a *APIUsageResponse) Summary() CreditsSummary {
-	per := a.CreditsPerMonth()
-	left := per - a.CreditsUsed
+// Summary builds the credits summary for an allowance granted over period.
+// Use UserInfoResponse.CreditsPeriod to resolve the period for an account.
+func (a *APIUsageResponse) Summary(period CreditsPeriod) CreditsSummary {
+	limit := a.CreditsLimit()
+	left := limit - a.CreditsUsed
 	if left < 0 {
 		left = 0
 	}
 
 	return CreditsSummary{
-		CreditsUsed:     a.CreditsUsed,
-		CreditsPerMonth: per,
-		CreditsLeft:     left,
+		CreditsUsed:   a.CreditsUsed,
+		CreditsLimit:  limit,
+		CreditsPeriod: period,
+		CreditsLeft:   left,
 	}
 }
 

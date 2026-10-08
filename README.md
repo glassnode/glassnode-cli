@@ -248,10 +248,15 @@ Example output:
 ```json
 {
   "creditsLeft": integer,
-  "creditsPerMonth": integer,
+  "creditsLimit": integer,
+  "creditsPeriod": "day" | "month",
   "creditsUsed": integer
 }
 ```
+
+`creditsLimit` is the allowance granted per `creditsPeriod`. The period depends on
+your plan: the advanced product is metered **per day**, every other product **per
+month**.
 
 ### `gn config set key=value`
 

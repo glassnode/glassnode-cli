@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -45,12 +46,53 @@ func TestGetAPIUsage(t *testing.T) {
 	if len(out.APIAddons) != 1 {
 		t.Errorf("len(APIAddons) = %d, want 1", len(out.APIAddons))
 	}
-	if out.CreditsPerMonth() != 1500000 {
-		t.Errorf("CreditsPerMonth() = %d, want 1500000 (max addon value)", out.CreditsPerMonth())
+	if out.CreditsLimit() != 1500000 {
+		t.Errorf("CreditsLimit() = %d, want 1500000 (max addon value)", out.CreditsLimit())
 	}
-	sum := out.Summary()
-	if sum.CreditsUsed != 6 || sum.CreditsPerMonth != 1500000 || sum.CreditsLeft != 1500000-6 {
-		t.Errorf("Summary() = %+v, want creditsUsed=6 creditsPerMonth=1500000 creditsLeft=%d", sum, 1500000-6)
+	sum := out.Summary(CreditsPeriodMonth)
+	if sum.CreditsUsed != 6 || sum.CreditsLimit != 1500000 || sum.CreditsLeft != 1500000-6 {
+		t.Errorf("Summary() = %+v, want creditsUsed=6 creditsLimit=1500000 creditsLeft=%d", sum, 1500000-6)
+	}
+	if sum.CreditsPeriod != CreditsPeriodMonth {
+		t.Errorf("Summary().CreditsPeriod = %q, want %q", sum.CreditsPeriod, CreditsPeriodMonth)
+	}
+}
+
+func TestSummary_PeriodIsCarriedThrough(t *testing.T) {
+	usage := &APIUsageResponse{CreditsUsed: 10, APIAddons: []APIAddon{{Value: 100}}}
+
+	for _, period := range []CreditsPeriod{CreditsPeriodDay, CreditsPeriodMonth} {
+		sum := usage.Summary(period)
+		if sum.CreditsPeriod != period {
+			t.Errorf("Summary(%q).CreditsPeriod = %q, want %q", period, sum.CreditsPeriod, period)
+		}
+	}
+}
+
+func TestSummary_CreditsLeftNeverNegative(t *testing.T) {
+	usage := &APIUsageResponse{CreditsUsed: 500, APIAddons: []APIAddon{{Value: 100}}}
+
+	if got := usage.Summary(CreditsPeriodDay).CreditsLeft; got != 0 {
+		t.Errorf("CreditsLeft = %d, want 0 when usage exceeds the limit", got)
+	}
+}
+
+func TestSummary_MarshalsCreditsLimitAndPeriod(t *testing.T) {
+	usage := &APIUsageResponse{CreditsUsed: 6, APIAddons: []APIAddon{{Value: 50}}}
+
+	body, err := json.Marshal(usage.Summary(CreditsPeriodDay))
+	if err != nil {
+		t.Fatalf("marshal summary: %v", err)
+	}
+
+	got := string(body)
+	for _, want := range []string{`"creditsLimit":50`, `"creditsPeriod":"day"`, `"creditsLeft":44`, `"creditsUsed":6`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary JSON %s, want it to contain %s", got, want)
+		}
+	}
+	if strings.Contains(got, "creditsPerMonth") {
+		t.Errorf("summary JSON %s must not contain the old creditsPerMonth key", got)
 	}
 }
 

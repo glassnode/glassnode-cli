@@ -79,10 +79,15 @@ Example JSON output:
 ```json
 {
   "creditsLeft": integer,
-  "creditsPerMonth": integer,
+  "creditsLimit": integer,
+  "creditsPeriod": "day" | "month",
   "creditsUsed": integer
 }
 ```
+
+`creditsLimit` is the allowance per `creditsPeriod`: `day` on the advanced product,
+`month` on every other one. Never report the limit as monthly without checking
+`creditsPeriod`.
 
 ### Config set / get
 ```bash

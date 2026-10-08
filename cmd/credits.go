@@ -22,13 +22,22 @@ var creditsCmd = &cobra.Command{
 
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		if dryRun {
-			u, err := client.BuildURL("/v1/user/api_usage", nil, nil)
-			if err != nil {
-				return err
+			for _, path := range []string{"/v1/user/info", "/v1/user/api_usage"} {
+				u, err := client.BuildURL(path, nil, nil)
+				if err != nil {
+					return err
+				}
+				redacted, _ := api.RedactAPIKeyFromURL(u)
+				fmt.Println(redacted)
 			}
-			redacted, _ := api.RedactAPIKeyFromURL(u)
-			fmt.Println(redacted)
 			return nil
+		}
+
+		// The credit allowance resets daily on the advanced product and monthly on
+		// every other one, so the period has to come from the account's products.
+		info, err := client.GetUserInfo(cmd.Context())
+		if err != nil {
+			return err
 		}
 
 		resp, err := client.GetAPIUsage(cmd.Context())
@@ -38,6 +47,6 @@ var creditsCmd = &cobra.Command{
 
 		format, _ := cmd.Flags().GetString("output")
 		tsFmt, _ := cmd.Flags().GetString("timestamp-format")
-		return output.Print(output.Options{Format: format, Data: resp.Summary(), TimestampFormat: tsFmt})
+		return output.Print(output.Options{Format: format, Data: resp.Summary(info.CreditsPeriod()), TimestampFormat: tsFmt})
 	},
 }
