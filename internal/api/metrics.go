@@ -14,6 +14,8 @@ type DataPoint struct {
 	T int64                  `json:"t"`
 	V interface{}            `json:"v,omitempty"`
 	O map[string]interface{} `json:"o,omitempty"`
+	// ComputedAt is set by point-in-time metrics: when the value was computed.
+	ComputedAt *int64 `json:"computed_at,omitempty"`
 }
 
 type BulkDataPoint struct {
