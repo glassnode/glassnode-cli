@@ -246,31 +246,33 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 }
 
 func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
-	fmt.Fprintf(w, "Path:           %s\n", m.Path)
-	fmt.Fprintf(w, "Tier:           %.0f\n", m.Tier)
-	fmt.Fprintf(w, "Bulk Supported: %t\n", m.BulkSupported)
-	fmt.Fprintf(w, "PIT:            %t\n", m.IsPit)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Path:           %s\n", m.Path)
+	fmt.Fprintf(&b, "Tier:           %.0f\n", m.Tier)
+	fmt.Fprintf(&b, "Bulk Supported: %t\n", m.BulkSupported)
+	fmt.Fprintf(&b, "PIT:            %t\n", m.IsPit)
 	if m.Descriptors != nil {
 		if m.Descriptors.Name != "" {
-			fmt.Fprintf(w, "Name:           %s\n", m.Descriptors.Name)
+			fmt.Fprintf(&b, "Name:           %s\n", m.Descriptors.Name)
 		}
 		if m.Descriptors.Group != "" {
-			fmt.Fprintf(w, "Group:          %s\n", m.Descriptors.Group)
+			fmt.Fprintf(&b, "Group:          %s\n", m.Descriptors.Group)
 		}
 		if len(m.Descriptors.Tags) > 0 {
-			fmt.Fprintf(w, "Tags:           %s\n", strings.Join(m.Descriptors.Tags, ", "))
+			fmt.Fprintf(&b, "Tags:           %s\n", strings.Join(m.Descriptors.Tags, ", "))
 		}
 	}
 	if m.Timerange != nil {
-		fmt.Fprintf(w, "Timerange:      %d - %d\n", m.Timerange.Min, m.Timerange.Max)
+		fmt.Fprintf(&b, "Timerange:      %d - %d\n", m.Timerange.Min, m.Timerange.Max)
 	}
 	if len(m.Parameters) > 0 {
-		fmt.Fprintln(w, "Parameters:")
+		fmt.Fprintln(&b, "Parameters:")
 		for k, vals := range m.Parameters {
-			fmt.Fprintf(w, "  %s: %s\n", k, strings.Join(vals, ", "))
+			fmt.Fprintf(&b, "  %s: %s\n", k, strings.Join(vals, ", "))
 		}
 	}
-	return nil
+	_, err := io.WriteString(w, b.String())
+	return err
 }
 
 func sortedKeys(m map[string]interface{}) []string {
