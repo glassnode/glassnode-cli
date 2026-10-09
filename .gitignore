@@ -18,3 +18,10 @@ Thumbs.db
 
 # Distribution
 dist/
+
+# Local env and credentials
+.env
+.env.*
+*.local
+*.pem
+*.key
