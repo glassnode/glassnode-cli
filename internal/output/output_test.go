@@ -305,7 +305,7 @@ func TestPrintTable_MetricMetadataWithOptionalFields(t *testing.T) {
 			Group: "Market",
 			Tags:  []string{"price", "market"},
 		},
-		Timerange:  &api.Timerange{Min: 1609459200, Max: 1735689600},
+		TimeRange:  &api.Timerange{Min: 1609459200, Max: 1735689600},
 		Parameters: map[string][]string{"a": {"BTC", "ETH"}, "i": {"24h"}},
 	}
 	if err := PrintTable(&buf, meta, ""); err != nil {
@@ -323,5 +323,51 @@ func TestPrintTable_MetricMetadataWithOptionalFields(t *testing.T) {
 	}
 	if !strings.Contains(out, "Parameters:") || !strings.Contains(out, "a:") || !strings.Contains(out, "BTC") {
 		t.Errorf("table should include Parameters: %q", out)
+	}
+}
+
+func TestPrintCSV_NumbersArePlainDecimal(t *testing.T) {
+	var buf bytes.Buffer
+	data := []api.DataPoint{{T: 1, V: 1738241421021.0708}, {T: 2, V: 0.000001}}
+	if err := PrintCSV(&buf, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	want := "t,v\n1,1738241421021.0708\n2,0.000001\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	var table bytes.Buffer
+	if err := PrintTable(&table, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(table.String(), "e+") {
+		t.Errorf("table uses scientific notation: %s", table.String())
+	}
+}
+
+func TestPrintCSV_ComputedAtColumn(t *testing.T) {
+	computed := int64(1791244932)
+	var buf bytes.Buffer
+	data := []api.DataPoint{{T: 1791158400, V: 664280.0, ComputedAt: &computed}, {T: 1791244800, V: 640332.0}}
+	if err := PrintCSV(&buf, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	want := "t,v,computed_at\n1791158400,664280,1791244932\n1791244800,640332,\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	var table bytes.Buffer
+	if err := PrintTable(&table, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(table.String(), "COMPUTED AT") || !strings.Contains(table.String(), "1791244932") {
+		t.Errorf("table lacks computed_at: %s", table.String())
+	}
+	var plain bytes.Buffer
+	if err := PrintCSV(&plain, []api.DataPoint{{T: 1, V: 2.0}}, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain.String(), "computed_at") {
+		t.Errorf("computed_at column shown without PIT data: %q", plain.String())
 	}
 }

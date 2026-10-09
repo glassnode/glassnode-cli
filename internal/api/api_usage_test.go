@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
+
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
 
 func TestGetAPIUsage(t *testing.T) {
@@ -18,7 +20,7 @@ func TestGetAPIUsage(t *testing.T) {
 	var gotPath, gotAPIKey string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		gotAPIKey = r.URL.Query().Get("api_key")
+		gotAPIKey = r.Header.Get("X-Api-Key")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(fixture)
 	}))
@@ -37,7 +39,7 @@ func TestGetAPIUsage(t *testing.T) {
 		t.Errorf("path = %q, want /v1/user/api_usage", gotPath)
 	}
 	if gotAPIKey != "my-key" {
-		t.Errorf("api_key = %q, want my-key", gotAPIKey)
+		t.Errorf("X-Api-Key = %q, want my-key", gotAPIKey)
 	}
 	if out.CreditsUsed != 6 {
 		t.Errorf("CreditsUsed = %d, want 6", out.CreditsUsed)
@@ -70,7 +72,8 @@ func TestGetAPIUsage_InvalidJSONReturnsError(t *testing.T) {
 		t.Fatal("expected error for invalid JSON")
 	}
 
-	if !strings.Contains(err.Error(), "decoding API usage response") {
-		t.Errorf("error = %v, want wrapping decode message", err)
+	var decode *glassnode.DecodeError
+	if !errors.As(err, &decode) || decode.Endpoint != "/v1/user/api_usage" {
+		t.Errorf("error = %v, want typed API usage decode error", err)
 	}
 }

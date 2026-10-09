@@ -2,13 +2,12 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
 
-type APIAddon struct {
-	Value int `json:"value"`
-}
+type APIAddon = glassnode.APIAddon
 
 type APIUsageResponse struct {
 	CreditsUsed int        `json:"creditsUsed"`
@@ -50,15 +49,13 @@ func (a *APIUsageResponse) Summary() CreditsSummary {
 
 // GetAPIUsage fetches the current API usage for the authenticated user
 func (c *Client) GetAPIUsage(ctx context.Context) (*APIUsageResponse, error) {
-	body, err := c.Do(ctx, "GET", "/v1/user/api_usage", nil)
+	client, err := c.sdk()
 	if err != nil {
-		return nil, fmt.Errorf("fetching API usage: %w", err)
+		return nil, err
 	}
-
-	var out APIUsageResponse
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("decoding API usage response: %w", err)
+	usage, err := client.GetAPIUsage(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetching API usage response: %w", err)
 	}
-
-	return &out, nil
+	return &APIUsageResponse{CreditsUsed: usage.CreditsUsed, APIAddons: usage.APIAddons}, nil
 }

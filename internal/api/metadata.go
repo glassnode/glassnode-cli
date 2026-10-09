@@ -2,85 +2,22 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/url"
 	"strings"
+
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
 
-type Asset struct {
-	ID             string            `json:"id"`
-	ExternalIDs    map[string]string `json:"external_ids,omitempty"`
-	Symbol         string            `json:"symbol"`
-	Name           string            `json:"name"`
-	AssetType      string            `json:"asset_type"`
-	Blockchains    []Blockchain      `json:"blockchains"`
-	Categories     []string          `json:"categories,omitempty"`
-	LogoURL        string            `json:"logo_url,omitempty"`
-	SemanticTags   []string          `json:"semantic_tags,omitempty"`
-	DefaultNetwork string            `json:"default_network,omitempty"`
-}
-
-type Blockchain struct {
-	Blockchain     string `json:"blockchain"`
-	Address        string `json:"address,omitempty"`
-	Decimals       int    `json:"decimals,omitempty"`
-	OnChainSupport bool   `json:"on_chain_support"`
-}
-
-type AssetsResponse struct {
-	Data []Asset `json:"data"`
-}
-
-// NamesResponse is the response of the metadata list endpoints
-// (/v1/metadata/tags, /v1/metadata/assets/tags, ...): {"data":[{"name":"..."},...]}.
-type NamesResponse struct {
-	Data []NameEntry `json:"data"`
-}
-
-// NameEntry is a single named value in a names response.
-type NameEntry struct {
-	Name string `json:"name"`
-}
-
-type MetricMetadata struct {
-	Path          string              `json:"path,omitempty"`
-	Tier          float64             `json:"tier,omitempty"`
-	IsPit         bool                `json:"is_pit,omitempty"`
-	Parameters    map[string][]string `json:"parameters"`
-	Queried       map[string]string   `json:"queried,omitempty"`
-	Refs          Refs                `json:"refs,omitempty"`
-	BulkSupported bool                `json:"bulk_supported"`
-	Timerange     *Timerange          `json:"timerange,omitempty"`
-	Modified      int64               `json:"modified,omitempty"`
-	Descriptors   *MetricDescriptors  `json:"descriptors,omitempty"`
-}
-
-type MetricVariant struct {
-	Base *string `json:"base,omitempty"`
-	Bulk *string `json:"bulk,omitempty"`
-	Pit  *string `json:"pit,omitempty"`
-}
-
-type MetricDescriptors struct {
-	Name             string            `json:"name,omitempty"`
-	ShortName        string            `json:"short_name,omitempty"`
-	Group            string            `json:"group,omitempty"`
-	Tags             []string          `json:"tags,omitempty"`
-	Description      map[string]string `json:"description,omitempty"`
-	DataSharingGroup string            `json:"data_sharing_group,omitempty"`
-}
-
-type Timerange struct {
-	Min int64 `json:"min,omitempty"`
-	Max int64 `json:"max,omitempty"`
-}
-
-type Refs struct {
-	Doc           string         `json:"docs,omitempty"`
-	Studio        string         `json:"studio,omitempty"`
-	MetricVariant *MetricVariant `json:"metric_variant,omitempty"`
-}
+type Asset = glassnode.Asset
+type Blockchain = glassnode.Blockchain
+type AssetsResponse = glassnode.AssetsResponse
+type NamesResponse = glassnode.NamesResponse
+type NameEntry = glassnode.NameEntry
+type MetricMetadata = glassnode.MetricMetadata
+type MetricVariant = glassnode.MetricVariant
+type MetricDescriptors = glassnode.MetricDescriptors
+type Timerange = glassnode.TimeRange
+type Refs = glassnode.Refs
 
 // assetToMap returns a map of JSON field names to values for the given asset.
 // Used by PruneAssets to build objects with only requested fields.
@@ -123,103 +60,45 @@ func PruneAssets(assets []Asset, fields []string) []map[string]interface{} {
 }
 
 func (c *Client) ListAssets(ctx context.Context, filter string) ([]Asset, error) {
-	params := map[string]string{}
-	if filter != "" {
-		params["filter"] = filter
-	}
-	body, err := c.Do(ctx, "GET", "/v1/metadata/assets", params)
+	client, err := c.sdk()
 	if err != nil {
-		return nil, fmt.Errorf("listing assets: %w", err)
+		return nil, err
 	}
-	var resp AssetsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decoding assets response: %w", err)
-	}
-	return resp.Data, nil
+	return client.ListAssets(ctx, filter)
 }
 
-// ListNames lists the named values from a metadata list endpoint such as
-// /v1/metadata/tags or /v1/metadata/assets/categories, optionally filtered by a CEL expression.
-func (c *Client) ListNames(ctx context.Context, path string, filter string) ([]string, error) {
-	params := map[string]string{}
-	if filter != "" {
-		params["filter"] = filter
-	}
-	body, err := c.Do(ctx, "GET", path, params)
+func (c *Client) ListNames(ctx context.Context, path, filter string) ([]string, error) {
+	client, err := c.sdk()
 	if err != nil {
-		return nil, fmt.Errorf("listing %s: %w", path, err)
+		return nil, err
 	}
-	var resp NamesResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decoding %s response: %w", path, err)
-	}
-	names := make([]string, 0, len(resp.Data))
-	for _, e := range resp.Data {
-		names = append(names, e.Name)
-	}
-	return names, nil
+	return client.ListNames(ctx, path, filter)
 }
 
-// ListMetrics lists available metric paths, optionally filtered by query parameters.
-// See https://docs.glassnode.com/basic-api/metadata#query-parameters-1
-// params: a (asset), c (currency), e (exchange), f (format), i (interval),
-// from_exchange, to_exchange, miner, maturity, network, period, quote_symbol.
-// repeatedParams: use key "a" for multiple assets (e.g. a=BTC&a=ETH).
-func (c *Client) ListMetrics(ctx context.Context, params map[string]string, repeatedParams map[string][]string) ([]string, error) {
-	if params == nil {
-		params = map[string]string{}
-	}
-	if repeatedParams == nil {
-		repeatedParams = map[string][]string{}
-	}
-	body, err := c.DoWithRepeatedParams(ctx, "GET", "/v1/metadata/metrics", params, repeatedParams)
+func (c *Client) ListMetrics(ctx context.Context, params map[string]string, repeated map[string][]string) ([]string, error) {
+	client, err := c.sdk()
 	if err != nil {
-		return nil, fmt.Errorf("listing metrics: %w", err)
+		return nil, err
 	}
-	var metrics []string
-	if err := json.Unmarshal(body, &metrics); err != nil {
-		return nil, fmt.Errorf("decoding metrics response: %w", err)
-	}
-	return metrics, nil
+	return client.ListMetrics(ctx, &glassnode.MetricParams{Extra: queryValues(params, repeated)})
 }
 
 func (c *Client) DescribeMetric(ctx context.Context, path, asset string) (*MetricMetadata, error) {
-	params := map[string]string{"path": path}
-	if asset != "" {
-		params["a"] = asset
-	}
-	body, err := c.Do(ctx, "GET", "/v1/metadata/metric", params)
+	client, err := c.sdk()
 	if err != nil {
-		return nil, fmt.Errorf("describing metric: %w", err)
+		return nil, err
 	}
-	var meta MetricMetadata
-	if err := json.Unmarshal(body, &meta); err != nil {
-		return nil, fmt.Errorf("decoding metric metadata: %w", err)
-	}
-	return &meta, nil
+	return client.GetMetricMetadata(ctx, path, &glassnode.MetricParams{Asset: asset})
 }
 
-// BuildURL constructs the full request URL without executing the request.
+// BuildURL constructs the request URL without executing the request. The
+// credential is not part of it: it travels in the header named by AuthHeader.
 func (c *Client) BuildURL(path string, params map[string]string, repeatedParams map[string][]string) (string, error) {
-	u, err := c.buildURL(path, params, repeatedParams)
+	u, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return "", err
 	}
-	return u.String(), nil
-}
-
-// RedactAPIKeyFromURL returns a copy of the URL with the api_key query parameter
-// replaced by a placeholder, for safe display (e.g. dry-run output).
-func RedactAPIKeyFromURL(raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", err
-	}
-	q := u.Query()
-	if q.Has("api_key") {
-		q.Set("api_key", "***")
-		u.RawQuery = q.Encode()
-	}
+	u.RawQuery = queryValues(params, repeatedParams).Encode()
 	return u.String(), nil
 }
 

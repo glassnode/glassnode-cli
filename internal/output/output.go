@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,27 +111,42 @@ func PrintCSV(w io.Writer, data interface{}, timestampFormat string) error {
 			cw.Flush()
 			return cw.Error()
 		}
+		computed := hasComputedAt(v)
 		if v[0].O != nil {
 			keys := sortedKeys(v[0].O)
 			header := append([]string{"t"}, keys...)
+			if computed {
+				header = append(header, "computed_at")
+			}
 			if err := write(header); err != nil {
 				return err
 			}
 			for _, dp := range v {
 				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
-					row = append(row, fmt.Sprintf("%v", dp.O[k]))
+					row = append(row, valueStr(dp.O[k]))
+				}
+				if computed {
+					row = append(row, computedAtStr(dp, timestampFormat))
 				}
 				if err := write(row); err != nil {
 					return err
 				}
 			}
 		} else {
-			if err := write([]string{"t", "v"}); err != nil {
+			header := []string{"t", "v"}
+			if computed {
+				header = append(header, "computed_at")
+			}
+			if err := write(header); err != nil {
 				return err
 			}
 			for _, dp := range v {
-				if err := write([]string{formatTimestamp(dp.T, timestampFormat), fmt.Sprintf("%v", dp.V)}); err != nil {
+				row := []string{formatTimestamp(dp.T, timestampFormat), valueStr(dp.V)}
+				if computed {
+					row = append(row, computedAtStr(dp, timestampFormat))
+				}
+				if err := write(row); err != nil {
 					return err
 				}
 			}
@@ -152,7 +168,7 @@ func PrintCSV(w io.Writer, data interface{}, timestampFormat string) error {
 			for _, entry := range dp.Bulk {
 				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
-					row = append(row, fmt.Sprintf("%v", entry[k]))
+					row = append(row, valueStr(entry[k]))
 				}
 				if err := write(row); err != nil {
 					return err
@@ -201,21 +217,36 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 		if len(v) == 0 {
 			return nil
 		}
+		computed := hasComputedAt(v)
 		if v[0].O != nil {
 			keys := sortedKeys(v[0].O)
 			header := append([]string{"TIME"}, upperAll(keys)...)
+			if computed {
+				header = append(header, "COMPUTED AT")
+			}
 			table.SetHeader(header)
 			for _, dp := range v {
 				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
-					row = append(row, fmt.Sprintf("%v", dp.O[k]))
+					row = append(row, valueStr(dp.O[k]))
+				}
+				if computed {
+					row = append(row, computedAtStr(dp, timestampFormat))
 				}
 				table.Append(row)
 			}
 		} else {
-			table.SetHeader([]string{"TIME", "VALUE"})
+			header := []string{"TIME", "VALUE"}
+			if computed {
+				header = append(header, "COMPUTED AT")
+			}
+			table.SetHeader(header)
 			for _, dp := range v {
-				table.Append([]string{formatTimestamp(dp.T, timestampFormat), fmt.Sprintf("%v", dp.V)})
+				row := []string{formatTimestamp(dp.T, timestampFormat), valueStr(dp.V)}
+				if computed {
+					row = append(row, computedAtStr(dp, timestampFormat))
+				}
+				table.Append(row)
 			}
 		}
 	case *api.BulkResponse:
@@ -232,7 +263,7 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 			for _, entry := range dp.Bulk {
 				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
-					row = append(row, fmt.Sprintf("%v", entry[k]))
+					row = append(row, valueStr(entry[k]))
 				}
 				table.Append(row)
 			}
@@ -247,9 +278,9 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 
 func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
 	fmt.Fprintf(w, "Path:           %s\n", m.Path)
-	fmt.Fprintf(w, "Tier:           %.0f\n", m.Tier)
+	fmt.Fprintf(w, "Tier:           %d\n", m.Tier)
 	fmt.Fprintf(w, "Bulk Supported: %t\n", m.BulkSupported)
-	fmt.Fprintf(w, "PIT:            %t\n", m.IsPit)
+	fmt.Fprintf(w, "PIT:            %t\n", m.IsPIT)
 	if m.Descriptors != nil {
 		if m.Descriptors.Name != "" {
 			fmt.Fprintf(w, "Name:           %s\n", m.Descriptors.Name)
@@ -261,8 +292,8 @@ func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
 			fmt.Fprintf(w, "Tags:           %s\n", strings.Join(m.Descriptors.Tags, ", "))
 		}
 	}
-	if m.Timerange != nil {
-		fmt.Fprintf(w, "Timerange:      %d - %d\n", m.Timerange.Min, m.Timerange.Max)
+	if m.TimeRange != nil {
+		fmt.Fprintf(w, "Timerange:      %d - %d\n", m.TimeRange.Min, m.TimeRange.Max)
 	}
 	if len(m.Parameters) > 0 {
 		fmt.Fprintln(w, "Parameters:")
@@ -282,15 +313,42 @@ func sortedKeys(m map[string]interface{}) []string {
 	return keys
 }
 
-// valueStr formats a value for CSV/table. Slices of strings are joined with ";".
+// valueStr formats a value for CSV/table. Numbers are written in plain
+// decimal notation (1738241421021.0708, not 1.7382414210210708e+12), so they
+// load into spreadsheets as numbers; slices of strings are joined with ";".
 func valueStr(v interface{}) string {
-	if v == nil {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case []string:
+		return strings.Join(x, ";")
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(x), 'f', -1, 32)
+	case json.Number:
+		return x.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// hasComputedAt reports whether any point carries computed_at, in which case
+// the column is shown for all of them.
+func hasComputedAt(points []api.DataPoint) bool {
+	for _, dp := range points {
+		if dp.ComputedAt != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func computedAtStr(dp api.DataPoint, timestampFormat string) string {
+	if dp.ComputedAt == nil {
 		return ""
 	}
-	if ss, ok := v.([]string); ok {
-		return strings.Join(ss, ";")
-	}
-	return fmt.Sprintf("%v", v)
+	return formatTimestamp(*dp.ComputedAt, timestampFormat)
 }
 
 func upperAll(ss []string) []string {

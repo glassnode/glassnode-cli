@@ -19,7 +19,10 @@ func TestCredits_DryRun_RedactsKey(t *testing.T) {
 	if !strings.Contains(stdout, "/v1/user/api_usage") {
 		t.Errorf("stdout should contain path: %s", stdout)
 	}
-	if !strings.Contains(stdout, "api_key=***") && !strings.Contains(stdout, "api_key=%2A%2A%2A") {
-		t.Errorf("stdout should contain redacted api_key: %s", stdout)
+	if strings.Contains(stdout, "api_key") {
+		t.Errorf("stdout must not contain an api_key parameter: %s", stdout)
+	}
+	if !strings.Contains(stderr, "X-Api-Key") {
+		t.Errorf("stderr should say the key is sent in the X-Api-Key header: %s", stderr)
 	}
 }

@@ -173,9 +173,10 @@ func TestResolveAuth_RefreshesExpiredAccessToken(t *testing.T) {
 }
 
 func TestDo_SendsCorrectURL(t *testing.T) {
-	var capturedURL string
+	var capturedURL, capturedKey string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedURL = r.URL.String()
+		capturedKey = r.Header.Get("X-Api-Key")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("{}"))
 	}))
@@ -189,8 +190,8 @@ func TestDo_SendsCorrectURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	if !strings.Contains(capturedURL, "api_key=my-api-key") {
-		t.Errorf("URL %q missing api_key param", capturedURL)
+	if capturedKey != "my-api-key" || strings.Contains(capturedURL, "api_key") {
+		t.Errorf("URL %q header %q: the key must travel in X-Api-Key only", capturedURL, capturedKey)
 	}
 	if !strings.Contains(capturedURL, "a=b") {
 		t.Errorf("URL %q missing a=b param", capturedURL)
@@ -277,6 +278,12 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 		if authHdrs[0] != "Bearer stale" || authHdrs[1] != "Bearer fresh" {
 			t.Errorf("auth headers %v", authHdrs)
 		}
+		if _, err := client.Do(context.Background(), "GET", "/v1/anything", nil); err != nil {
+			t.Fatal(err)
+		}
+		if len(authHdrs) != 3 || authHdrs[2] != "Bearer fresh" {
+			t.Errorf("refreshed token was not reused: %v", authHdrs)
+		}
 	})
 }
 
@@ -360,32 +367,14 @@ func TestBuildURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildURL: %v", err)
 	}
-	if !strings.Contains(got, "api_key=test-key") {
-		t.Errorf("URL %q missing api_key", got)
+	if strings.Contains(got, "api_key") || strings.Contains(got, "test-key") {
+		t.Errorf("URL %q must not contain the API key", got)
 	}
 	if !strings.Contains(got, "p=v") {
 		t.Errorf("URL %q missing p=v", got)
 	}
 	if !strings.Contains(got, "a=x") {
 		t.Errorf("URL %q missing a=x", got)
-	}
-}
-
-func TestRedactAPIKeyFromURL(t *testing.T) {
-	raw := "https://api.example.com/v1/path?api_key=secret123&a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
-	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
-	}
-	if strings.Contains(redacted, "secret123") {
-		t.Errorf("redacted URL should not contain secret: %q", redacted)
-	}
-	// Placeholder may be URL-encoded as %2A%2A%2A
-	if !strings.Contains(redacted, "api_key=***") && !strings.Contains(redacted, "api_key=%2A%2A%2A") {
-		t.Errorf("redacted URL should contain api_key redaction: %q", redacted)
-	}
-	if !strings.Contains(redacted, "a=b") {
-		t.Errorf("redacted URL should preserve other params: %q", redacted)
 	}
 }
 
@@ -582,7 +571,7 @@ func TestGetMetricBulk(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	resp, err := client.GetMetricBulk(context.Background(), "/market/price_usd_close", nil, nil)
+	resp, err := client.GetMetricBulk(context.Background(), "/market/price_usd_close", map[string]string{"s": "1770076800"}, nil)
 	if err != nil {
 		t.Fatalf("GetMetricBulk: %v", err)
 	}
@@ -667,7 +656,7 @@ func TestGetMetricBulk_InvalidJSONReturnsError(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.GetMetricBulk(context.Background(), "/market/price", nil, nil)
+	_, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "1"}, nil)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
@@ -746,7 +735,7 @@ func TestGetMetricBulk_EmptyData(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	resp, err := client.GetMetricBulk(context.Background(), "/market/price", nil, nil)
+	resp, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "1"}, nil)
 	if err != nil {
 		t.Fatalf("GetMetricBulk: %v", err)
 	}
@@ -764,7 +753,7 @@ func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("key", "")
+	client := NewClient("test-api-secret", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
@@ -780,36 +769,44 @@ func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
 	}
 }
 
-// RedactAPIKeyFromURL edge cases (point 7)
+func TestGetMetricBulk_KeepsAllSelectors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"t":1,"bulk":[
+			{"a":"BTC","e":"binance","v":1},
+			{"a":"ETH","category":"more_10y","v":null}]}]}`))
+	}))
+	defer server.Close()
 
-func TestRedactAPIKeyFromURL_NoAPIKeyParam(t *testing.T) {
-	raw := "https://api.example.com/v1/path?a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
+	client := NewClient("key", "")
+	client.baseURL = server.URL
+	client.httpClient = server.Client()
+
+	resp, err := client.GetMetricBulk(context.Background(), "/distribution/balance_exchanges", map[string]string{"s": "1"}, nil)
 	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
+		t.Fatalf("GetMetricBulk: %v", err)
 	}
-	if redacted != raw {
-		t.Errorf("URL without api_key should be unchanged: got %q", redacted)
+	rows := resp.Data[0].Bulk
+	if rows[0]["e"] != "binance" || rows[0]["a"] != "BTC" || rows[0]["v"] != 1.0 {
+		t.Errorf("exchange selector lost: %v", rows[0])
+	}
+	if rows[1]["category"] != "more_10y" || rows[1]["v"] != nil {
+		t.Errorf("category selector lost: %v", rows[1])
 	}
 }
 
-func TestRedactAPIKeyFromURL_EmptyAPIKey(t *testing.T) {
-	raw := "https://api.example.com/v1/path?api_key=&a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
+func TestMetricParamsMapsTypedFields(t *testing.T) {
+	p, err := metricParams(map[string]string{"s": "100", "u": "200", "i": "24h", "c": "USD", "a": "BTC", "network": "eth"}, map[string][]string{"e": {"binance", "coinbase"}})
 	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
+		t.Fatal(err)
 	}
-	if !strings.Contains(redacted, "a=b") {
-		t.Errorf("should preserve other params: %q", redacted)
+	if p.Since.Unix() != 100 || p.Until.Unix() != 200 || p.Interval != "24h" || p.Currency != "USD" || p.Asset != "BTC" || len(p.Exchanges) != 2 {
+		t.Errorf("typed fields: %+v", p)
 	}
-	if !strings.Contains(redacted, "api_key=") {
-		t.Errorf("should still have api_key param: %q", redacted)
+	if p.Extra.Get("network") != "eth" || p.Extra.Has("s") || p.Extra.Has("a") || p.Extra.Has("e") {
+		t.Errorf("extra: %v", p.Extra)
 	}
-}
-
-func TestRedactAPIKeyFromURL_InvalidURL(t *testing.T) {
-	_, err := RedactAPIKeyFromURL("://invalid")
-	if err == nil {
-		t.Error("expected error for invalid URL")
+	if _, err := metricParams(map[string]string{"s": "yesterday"}, nil); err == nil {
+		t.Error("accepted non-numeric since")
 	}
 }

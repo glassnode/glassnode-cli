@@ -191,7 +191,6 @@ gn metric list --from-exchange binance --to-exchange coinbase
 | `--assets` | | Filter by multiple assets (repeat for each, e.g. `--assets BTC --assets ETH`) |
 | `--currency` | `-c` | Filter by currency (e.g. `native`, `usd`) |
 | `--exchange` | `-e` | Filter by exchange (e.g. `binance`, `coinbase`) |
-| `--format` | `-f` | Filter by response format (e.g. `json`, `csv`) |
 | `--interval` | `-i` | Filter by time interval (e.g. `1h`, `24h`) |
 | `--from-exchange` | | Source exchange for inter-exchange metrics |
 | `--to-exchange` | | Destination exchange for inter-exchange metrics |
@@ -219,8 +218,10 @@ gn metric get market/price_usd_close --asset BTC --interval 24h
 gn metric get market/price_usd_close --asset BTC --since 2024-01-01 --until 2024-02-01
 gn metric get indicators/sopr --asset BTC --interval 24h --since 30d
 gn metric get distribution/balance_exchanges --asset BTC --exchange binance --currency usd
-# Bulk: append /bulk to the path; use -a '*' for all assets or multiple -a for specific ones
+# Bulk: append /bulk to the path; use -a '*' for all assets or multiple -a for specific ones.
+# --since is required; longer ranges than the API allows per request need --split
 gn metric get market/marketcap_usd/bulk -a '*' --since 30d
+gn metric get market/marketcap_usd/bulk -a BTC -a ETH --since 2024-01-01 --split
 ```
 
 | Flag | Short | Description |
@@ -232,8 +233,13 @@ gn metric get market/marketcap_usd/bulk -a '*' --since 30d
 | `--currency` | `-c` | Currency for the metric (`usd`, `native`) |
 | `--exchange` | `-e` | Exchange filter (repeatable for bulk) |
 | `--network` | `-n` | Network filter |
+| `--split` | | Bulk only: fetch a range longer than the API allows per request in several requests |
 
 For **bulk metrics**, append `/bulk` to the path (e.g. `market/marketcap_usd/bulk`). To pass multiple assets, repeat the `-a` (or `--asset`) flag for each: `-a BTC -a ETH -a SOL`. Use `-a '*'` to request all assets.
+
+Point-in-time metrics (`*_pit`) include `computed_at`, the time the value was computed, as a field in JSON and as a trailing column in CSV and table output.
+
+The API requires `--since` for bulk metrics and accepts at most 10 days per request at `10m`/`1h`, 31 days at `24h` and 93 days at `1w`/`1month`. A longer range is rejected before any request is sent unless you pass `--split`: the CLI then fetches it window by window, prints how many requests that takes on stderr, and merges the points. Every request is billed per asset, so narrow `-a` for long ranges. The merged result is assembled in memory before it is printed.
 
 ### `gn user credits`
 
@@ -279,7 +285,7 @@ OAuth session fields (`oauth-access-token`, `oauth-refresh-token`, `oauth-expire
 |------|-------|-------------|
 | `--api-key` | | Glassnode API key |
 | `--output` | `-o` | Output format: `json` (default), `csv`, `table` |
-| `--dry-run` | | Print the request URL without executing |
+| `--dry-run` | | Print the request URL without executing; the API key is sent in the `X-Api-Key` header and is not part of the URL |
 | `--timestamp-format` | | Timestamp format in output |
 
 ## Output Formats
@@ -319,8 +325,9 @@ gn metric get market/price_usd_close --asset BTC --since 30d --dry-run
 Append `/bulk` to the metric path. Specify multiple assets by repeating `-a` for each, or use `-a '*'` for all:
 
 ```bash
-# Multiple specific assets (repeat -a for each)
-gn metric get market/marketcap_usd/bulk -a BTC -a ETH -a SOL -s 2024-01-01
+# Multiple specific assets (repeat -a for each); a range over the API's
+# per-request limit is fetched in several requests with --split
+gn metric get market/marketcap_usd/bulk -a BTC -a ETH -a SOL -s 2024-01-01 -u 2024-04-01 --split
 
 # All assets (wildcard)
 gn metric get market/marketcap_usd/bulk -a '*' --interval 24h --since 30d
