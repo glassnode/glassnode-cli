@@ -80,14 +80,14 @@ Example JSON output:
 {
   "creditsLeft": integer,
   "creditsLimit": integer,
-  "creditsPeriod": "day" | "month",
+  "creditsPeriod": "daily" | "monthly",
   "creditsUsed": integer
 }
 ```
 
 All four fields describe the same window. `creditsLimit` is the allowance per
-`creditsPeriod` (`day` on the advanced product, `month` on every other one), and
-`creditsUsed` and `creditsLeft` are the usage and remainder within it. Never
+`creditsPeriod` (`daily` on the advanced product, `monthly` on every other one),
+and `creditsUsed` and `creditsLeft` are the usage and remainder within it. Never
 report the limit or the usage as monthly without reading `creditsPeriod`.
 
 ### Config set / get

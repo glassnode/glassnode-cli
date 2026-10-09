@@ -4,20 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
-// CreditsPeriod is the period over which an account's API credit allowance is granted.
+// CreditsPeriod is the period over which an account's API credit allowance is
+// granted. The values are the ones /v1/user/api_usage reports on the addon, so
+// they reach the CLI output unchanged rather than being renamed on the way.
 type CreditsPeriod string
 
 const (
-	CreditsPeriodDay   CreditsPeriod = "day"
-	CreditsPeriodMonth CreditsPeriod = "month"
-)
-
-// The closed enum of period values /v1/user/api_usage reports on an addon.
-const (
-	addonPeriodDaily   = "daily"
-	addonPeriodMonthly = "monthly"
+	CreditsPeriodDaily   CreditsPeriod = "daily"
+	CreditsPeriodMonthly CreditsPeriod = "monthly"
 )
 
 type APIAddon struct {
@@ -27,19 +24,20 @@ type APIAddon struct {
 	Version string `json:"version"`
 }
 
-// CreditsPeriod maps the addon's server-side period onto a CreditsPeriod.
-// Period is a closed enum of addonPeriodDaily or addonPeriodMonthly, so the
-// default is unreachable under the current contract; it keeps the summary
-// readable rather than failing if the enum is ever widened, at the cost of
-// labelling a new period as monthly.
+// CreditsPeriod returns the addon's period as a CreditsPeriod. Period is a
+// closed enum of CreditsPeriodDaily or CreditsPeriodMonthly, matched
+// case-insensitively so a change in the server's casing or padding cannot
+// silently route a daily allowance onto the month-to-date counter. The default
+// keeps the summary readable rather than failing if the enum is ever widened,
+// at the cost of labelling a new period as monthly.
 func (a APIAddon) CreditsPeriod() CreditsPeriod {
-	switch a.Period {
-	case addonPeriodDaily:
-		return CreditsPeriodDay
-	case addonPeriodMonthly:
-		return CreditsPeriodMonth
+	switch strings.ToLower(strings.TrimSpace(a.Period)) {
+	case string(CreditsPeriodDaily):
+		return CreditsPeriodDaily
+	case string(CreditsPeriodMonthly):
+		return CreditsPeriodMonthly
 	default:
-		return CreditsPeriodMonth
+		return CreditsPeriodMonthly
 	}
 }
 
@@ -53,7 +51,9 @@ type APIUsageResponse struct {
 }
 
 // primaryAddon returns the addon carrying the largest credit allowance, or nil
-// when the account has no addons.
+// when the account has no addons. An account cannot hold both a monthly and a
+// daily API addon, so this never has to choose between periods: the max only
+// guards against ordering assumptions, it is not a cross-period comparison.
 func (a *APIUsageResponse) primaryAddon() *APIAddon {
 	var primary *APIAddon
 	for i := range a.APIAddons {
@@ -81,7 +81,7 @@ func (a *APIUsageResponse) CreditsPeriod() CreditsPeriod {
 		return primary.CreditsPeriod()
 	}
 
-	return CreditsPeriodMonth
+	return CreditsPeriodMonthly
 }
 
 // CreditsUsedInPeriod returns the usage that counts against CreditsLimit: the
@@ -89,7 +89,7 @@ func (a *APIUsageResponse) CreditsPeriod() CreditsPeriod {
 // monthly one. Both counters reset with their own period, so each only lines up
 // with the allowance of the same period.
 func (a *APIUsageResponse) CreditsUsedInPeriod() int {
-	if a.CreditsPeriod() == CreditsPeriodDay {
+	if a.CreditsPeriod() == CreditsPeriodDaily {
 		return a.DailyRequestsUsed
 	}
 

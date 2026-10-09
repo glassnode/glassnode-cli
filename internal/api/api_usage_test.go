@@ -62,8 +62,8 @@ func TestGetAPIUsage(t *testing.T) {
 	if sum.CreditsUsed != 6 || sum.CreditsLimit != 1500000 || sum.CreditsLeft != 1500000-6 {
 		t.Errorf("Summary() = %+v, want creditsUsed=6 creditsLimit=1500000 creditsLeft=%d", sum, 1500000-6)
 	}
-	if sum.CreditsPeriod != CreditsPeriodMonth {
-		t.Errorf("Summary().CreditsPeriod = %q, want %q", sum.CreditsPeriod, CreditsPeriodMonth)
+	if sum.CreditsPeriod != CreditsPeriodMonthly {
+		t.Errorf("Summary().CreditsPeriod = %q, want %q", sum.CreditsPeriod, CreditsPeriodMonthly)
 	}
 }
 
@@ -73,21 +73,13 @@ func TestCreditsPeriod_ComesFromTheAddon(t *testing.T) {
 		addons []APIAddon
 		want   CreditsPeriod
 	}{
-		{"daily", []APIAddon{{Value: 50, Period: "daily"}}, CreditsPeriodDay},
-		{"monthly", []APIAddon{{Value: 1500000, Period: "monthly"}}, CreditsPeriodMonth},
-		{"an absent period falls back to monthly", []APIAddon{{Value: 50}}, CreditsPeriodMonth},
-		{"a period outside the enum falls back to monthly", []APIAddon{{Value: 50, Period: "weekly"}}, CreditsPeriodMonth},
-		{"no addons falls back to monthly", nil, CreditsPeriodMonth},
-		{
-			"the period follows the largest addon, whatever its order",
-			[]APIAddon{{Value: 10, Period: "monthly"}, {Value: 50, Period: "daily"}},
-			CreditsPeriodDay,
-		},
-		{
-			"the period follows the largest addon, largest first",
-			[]APIAddon{{Value: 1500000, Period: "monthly"}, {Value: 50, Period: "daily"}},
-			CreditsPeriodMonth,
-		},
+		{"daily", []APIAddon{{Value: 50, Period: "daily"}}, CreditsPeriodDaily},
+		{"monthly", []APIAddon{{Value: 1500000, Period: "monthly"}}, CreditsPeriodMonthly},
+		{"an absent period falls back to monthly", []APIAddon{{Value: 50}}, CreditsPeriodMonthly},
+		{"a period outside the enum falls back to monthly", []APIAddon{{Value: 50, Period: "weekly"}}, CreditsPeriodMonthly},
+		{"no addons falls back to monthly", nil, CreditsPeriodMonthly},
+		{"a mixed-case period still maps", []APIAddon{{Value: 50, Period: "Daily"}}, CreditsPeriodDaily},
+		{"a padded period still maps", []APIAddon{{Value: 50, Period: " monthly "}}, CreditsPeriodMonthly},
 	}
 
 	for _, tt := range tests {
@@ -119,7 +111,7 @@ func TestSummary_UsageIsScopedToThePeriod(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			limit := 50
-			if tt.period == addonPeriodMonthly {
+			if tt.period == string(CreditsPeriodMonthly) {
 				limit = 50000
 			}
 			usage := &APIUsageResponse{
@@ -177,7 +169,7 @@ func TestSummary_MarshalsCreditsLimitAndPeriod(t *testing.T) {
 	}
 
 	got := string(body)
-	for _, want := range []string{`"creditsLimit":50`, `"creditsPeriod":"day"`, `"creditsLeft":44`, `"creditsUsed":6`} {
+	for _, want := range []string{`"creditsLimit":50`, `"creditsPeriod":"daily"`, `"creditsLeft":44`, `"creditsUsed":6`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary JSON %s, want it to contain %s", got, want)
 		}
