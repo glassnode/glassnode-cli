@@ -46,10 +46,19 @@ func TestGetAPIUsage(t *testing.T) {
 	if len(out.APIAddons) != 1 {
 		t.Errorf("len(APIAddons) = %d, want 1", len(out.APIAddons))
 	}
+	if out.CustomerID != 4568 {
+		t.Errorf("CustomerID = %d, want 4568", out.CustomerID)
+	}
+	if out.DailyRequestsUsed != 2 {
+		t.Errorf("DailyRequestsUsed = %d, want 2", out.DailyRequestsUsed)
+	}
+	if addon := out.APIAddons[0]; addon.Period != "monthly" || addon.RPM != 100 || addon.Version != "v3" {
+		t.Errorf("APIAddons[0] = %+v, want period=monthly rpm=100 version=v3", addon)
+	}
 	if out.CreditsLimit() != 1500000 {
 		t.Errorf("CreditsLimit() = %d, want 1500000 (max addon value)", out.CreditsLimit())
 	}
-	sum := out.Summary(CreditsPeriodMonth)
+	sum := out.Summary()
 	if sum.CreditsUsed != 6 || sum.CreditsLimit != 1500000 || sum.CreditsLeft != 1500000-6 {
 		t.Errorf("Summary() = %+v, want creditsUsed=6 creditsLimit=1500000 creditsLeft=%d", sum, 1500000-6)
 	}
@@ -58,29 +67,111 @@ func TestGetAPIUsage(t *testing.T) {
 	}
 }
 
-func TestSummary_PeriodIsCarriedThrough(t *testing.T) {
-	usage := &APIUsageResponse{CreditsUsed: 10, APIAddons: []APIAddon{{Value: 100}}}
+func TestCreditsPeriod_ComesFromTheAddon(t *testing.T) {
+	tests := []struct {
+		name   string
+		addons []APIAddon
+		want   CreditsPeriod
+	}{
+		{"daily", []APIAddon{{Value: 50, Period: "daily"}}, CreditsPeriodDay},
+		{"monthly", []APIAddon{{Value: 1500000, Period: "monthly"}}, CreditsPeriodMonth},
+		{"an absent period falls back to monthly", []APIAddon{{Value: 50}}, CreditsPeriodMonth},
+		{"a period outside the enum falls back to monthly", []APIAddon{{Value: 50, Period: "weekly"}}, CreditsPeriodMonth},
+		{"no addons falls back to monthly", nil, CreditsPeriodMonth},
+		{
+			"the period follows the largest addon, whatever its order",
+			[]APIAddon{{Value: 10, Period: "monthly"}, {Value: 50, Period: "daily"}},
+			CreditsPeriodDay,
+		},
+		{
+			"the period follows the largest addon, largest first",
+			[]APIAddon{{Value: 1500000, Period: "monthly"}, {Value: 50, Period: "daily"}},
+			CreditsPeriodMonth,
+		},
+	}
 
-	for _, period := range []CreditsPeriod{CreditsPeriodDay, CreditsPeriodMonth} {
-		sum := usage.Summary(period)
-		if sum.CreditsPeriod != period {
-			t.Errorf("Summary(%q).CreditsPeriod = %q, want %q", period, sum.CreditsPeriod, period)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usage := &APIUsageResponse{APIAddons: tt.addons}
+			if got := usage.CreditsPeriod(); got != tt.want {
+				t.Errorf("CreditsPeriod() = %q, want %q", got, tt.want)
+			}
+			if got := usage.Summary().CreditsPeriod; got != tt.want {
+				t.Errorf("Summary().CreditsPeriod = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// A daily allowance has to be measured against the day's usage, not the running
+// total, or an advanced account reports no credits left within days of use.
+func TestSummary_UsageIsScopedToThePeriod(t *testing.T) {
+	tests := []struct {
+		name     string
+		period   string
+		wantUsed int
+		wantLeft int
+	}{
+		{"daily counts the day's requests", "daily", 2, 50 - 2},
+		{"monthly counts the running total", "monthly", 4000, 50000 - 4000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			limit := 50
+			if tt.period == addonPeriodMonthly {
+				limit = 50000
+			}
+			usage := &APIUsageResponse{
+				CreditsUsed:       4000,
+				DailyRequestsUsed: 2,
+				APIAddons:         []APIAddon{{Value: limit, Period: tt.period}},
+			}
+
+			if got := usage.CreditsUsedInPeriod(); got != tt.wantUsed {
+				t.Errorf("CreditsUsedInPeriod() = %d, want %d", got, tt.wantUsed)
+			}
+			sum := usage.Summary()
+			if sum.CreditsUsed != tt.wantUsed {
+				t.Errorf("CreditsUsed = %d, want %d", sum.CreditsUsed, tt.wantUsed)
+			}
+			if sum.CreditsLeft != tt.wantLeft {
+				t.Errorf("CreditsLeft = %d, want %d", sum.CreditsLeft, tt.wantLeft)
+			}
+		})
+	}
+}
+
+func TestCreditsLimit_NoAddons(t *testing.T) {
+	usage := &APIUsageResponse{CreditsUsed: 3}
+
+	if got := usage.CreditsLimit(); got != 0 {
+		t.Errorf("CreditsLimit() = %d, want 0 without addons", got)
+	}
+	if got := usage.Summary().CreditsLeft; got != 0 {
+		t.Errorf("CreditsLeft = %d, want 0 without addons", got)
 	}
 }
 
 func TestSummary_CreditsLeftNeverNegative(t *testing.T) {
-	usage := &APIUsageResponse{CreditsUsed: 500, APIAddons: []APIAddon{{Value: 100}}}
+	usage := &APIUsageResponse{
+		DailyRequestsUsed: 500,
+		APIAddons:         []APIAddon{{Value: 100, Period: "daily"}},
+	}
 
-	if got := usage.Summary(CreditsPeriodDay).CreditsLeft; got != 0 {
+	if got := usage.Summary().CreditsLeft; got != 0 {
 		t.Errorf("CreditsLeft = %d, want 0 when usage exceeds the limit", got)
 	}
 }
 
 func TestSummary_MarshalsCreditsLimitAndPeriod(t *testing.T) {
-	usage := &APIUsageResponse{CreditsUsed: 6, APIAddons: []APIAddon{{Value: 50}}}
+	usage := &APIUsageResponse{
+		CreditsUsed:       9000,
+		DailyRequestsUsed: 6,
+		APIAddons:         []APIAddon{{Value: 50, Period: "daily"}},
+	}
 
-	body, err := json.Marshal(usage.Summary(CreditsPeriodDay))
+	body, err := json.Marshal(usage.Summary())
 	if err != nil {
 		t.Fatalf("marshal summary: %v", err)
 	}
@@ -93,6 +184,10 @@ func TestSummary_MarshalsCreditsLimitAndPeriod(t *testing.T) {
 	}
 	if strings.Contains(got, "creditsPerMonth") {
 		t.Errorf("summary JSON %s must not contain the old creditsPerMonth key", got)
+	}
+	// The running total must not leak into a daily summary.
+	if strings.Contains(got, "9000") {
+		t.Errorf("summary JSON %s must not report the running total on a daily allowance", got)
 	}
 }
 

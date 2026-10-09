@@ -254,9 +254,11 @@ Example output:
 }
 ```
 
-`creditsLimit` is the allowance granted per `creditsPeriod`. The period depends on
-your plan: the advanced product is metered **per day**, every other product **per
-month**.
+All four fields describe the same window. `creditsLimit` is the allowance granted
+per `creditsPeriod`, both read from your account's API addon, and `creditsUsed`
+and `creditsLeft` are the usage and remainder within that window. The period
+depends on your plan: the advanced product is metered **per day**, every other
+product **per month**.
 
 ### `gn config set key=value`
 

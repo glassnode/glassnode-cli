@@ -85,9 +85,10 @@ Example JSON output:
 }
 ```
 
-`creditsLimit` is the allowance per `creditsPeriod`: `day` on the advanced product,
-`month` on every other one. Never report the limit as monthly without checking
-`creditsPeriod`.
+All four fields describe the same window. `creditsLimit` is the allowance per
+`creditsPeriod` (`day` on the advanced product, `month` on every other one), and
+`creditsUsed` and `creditsLeft` are the usage and remainder within it. Never
+report the limit or the usage as monthly without reading `creditsPeriod`.
 
 ### Config set / get
 ```bash

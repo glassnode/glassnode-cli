@@ -1,1 +1,0 @@
-{"uuid":"cus_000000000000TEST","firstName":"Test","lastName":"User","email":"advanced@example.com","products":["advanced"],"searchAPIKey":"do-not-decode-search-api-key","addons":[{"type":"API_LIMIT","value":50},{"type":"ALERT_LIMIT","value":10}],"apiKey":"do-not-decode-api-key","features":["product_permissions"],"trial":false,"trialAvailable":false,"allowDownloads":false}
