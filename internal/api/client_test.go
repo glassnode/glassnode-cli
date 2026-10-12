@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -587,7 +588,7 @@ func TestGetMetricBulk(t *testing.T) {
 	if resp.Data[0].Bulk[0]["a"] != "BTC" {
 		t.Errorf("got a=%v", resp.Data[0].Bulk[0]["a"])
 	}
-	if resp.Data[0].Bulk[0]["v"] != 1513125006987.5164 {
+	if resp.Data[0].Bulk[0]["v"] != json.Number("1513125006987.5164") {
 		t.Errorf("got v=%v", resp.Data[0].Bulk[0]["v"])
 	}
 }
@@ -787,7 +788,7 @@ func TestGetMetricBulk_KeepsAllSelectors(t *testing.T) {
 		t.Fatalf("GetMetricBulk: %v", err)
 	}
 	rows := resp.Data[0].Bulk
-	if rows[0]["e"] != "binance" || rows[0]["a"] != "BTC" || rows[0]["v"] != 1.0 {
+	if rows[0]["e"] != "binance" || rows[0]["a"] != "BTC" || rows[0]["v"] != json.Number("1") {
 		t.Errorf("exchange selector lost: %v", rows[0])
 	}
 	if rows[1]["category"] != "more_10y" || rows[1]["v"] != nil {
@@ -808,5 +809,31 @@ func TestMetricParamsMapsTypedFields(t *testing.T) {
 	}
 	if _, err := metricParams(map[string]string{"s": "yesterday"}, nil); err == nil {
 		t.Error("accepted non-numeric since")
+	}
+}
+
+func TestGetMetricBulk_PassesEntriesThrough(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/metrics/market/price/bulk" {
+			t.Errorf("path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"t":1,"bulk":[{"a":"BTC","period":7,"v":12345678901234567890},{"a":"ETH","v":{"o":1,"c":2}}]}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("key", "")
+	client.baseURL = server.URL
+	client.httpClient = server.Client()
+
+	resp, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "1"}, nil)
+	if err != nil {
+		t.Fatalf("GetMetricBulk: %v", err)
+	}
+	encoded, err := json.Marshal(resp.Data[0].Bulk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(encoded), `[{"a":"BTC","period":7,"v":12345678901234567890},{"a":"ETH","v":{"c":2,"o":1}}]`; got != want {
+		t.Errorf("bulk entries\n got %s\nwant %s", got, want)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	glassnode "github.com/glassnode/glassnode-api-go-client"
@@ -90,6 +91,11 @@ func (c *Client) GetMetric(ctx context.Context, path string, params map[string]s
 	return points, nil
 }
 
+// GetMetricBulk fetches the bulk variant of a metric and returns its entries as
+// the API sent them. The CLI only prints them, so it decodes into its own rows
+// rather than the SDK's typed BulkEntry: numbers stay numbers (the SDK decodes
+// with UseNumber), large integers keep their precision and selectors or values
+// of any type pass through.
 func (c *Client) GetMetricBulk(ctx context.Context, path string, params map[string]string, repeated map[string][]string) (*BulkResponse, error) {
 	client, err := c.sdk()
 	if err != nil {
@@ -99,28 +105,12 @@ func (c *Client) GetMetricBulk(ctx context.Context, path string, params map[stri
 	if err != nil {
 		return nil, err
 	}
-	points, err := client.GetBulkMetric(ctx, path, p)
-	if err != nil {
+	var response BulkResponse
+	if err := client.GetMetric(ctx, strings.TrimSuffix(NormalizePath(path), "/")+"/bulk", p, &response); err != nil {
 		return nil, fmt.Errorf("getting bulk metric: %w", err)
 	}
-	response := &BulkResponse{Data: make([]BulkDataPoint, 0, len(points))}
-	for _, point := range points {
-		entries := make([]map[string]interface{}, 0, len(point.Bulk))
-		for _, entry := range point.Bulk {
-			// Every selector of the entry (a, e, network, category, ...) is
-			// kept, as the API returned it, next to the value.
-			row := make(map[string]interface{}, len(entry.Params)+1)
-			for key, selector := range entry.Params {
-				row[key] = selector
-			}
-			var value any
-			if entry.Value != nil {
-				value = *entry.Value
-			}
-			row["v"] = value
-			entries = append(entries, row)
-		}
-		response.Data = append(response.Data, BulkDataPoint{T: point.Timestamp, Bulk: entries})
+	if response.Data == nil {
+		response.Data = []BulkDataPoint{}
 	}
-	return response, nil
+	return &response, nil
 }
