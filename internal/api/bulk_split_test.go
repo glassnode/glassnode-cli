@@ -254,3 +254,27 @@ func TestFormatBound(t *testing.T) {
 		t.Errorf("intraday: %s", got)
 	}
 }
+
+// At monthly resolution a 93-day window may be halved once (46 days, still
+// over one interval) but not twice (23 days would return no points).
+func TestGetMetricBulkSplitDoesNotHalveBelowAnInterval(t *testing.T) {
+	plan := BulkPlan{Since: planSince, Until: planSince.Add(93 * day), Interval: "1month", Window: 93 * day}
+	server, calls, windows := bulkServer(t, 40*day, 0) // even 46 days is rejected
+	_, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	if err == nil || !strings.Contains(err.Error(), "time range") {
+		t.Fatalf("err = %v, want the API's too-large error once halving is exhausted", err)
+	}
+	if calls.Load() != 2 || (*windows)[1].Until.Sub((*windows)[1].Since) != 46*day+12*time.Hour {
+		t.Errorf("calls=%d windows=%v, want 93d then 46.5d and no 23d window", calls.Load(), *windows)
+	}
+}
+
+func TestRangeMessagesKeepIntradayBounds(t *testing.T) {
+	since := planSince.Add(6 * time.Hour)
+	plan := BulkPlan{Since: since, Until: since.Add(19 * day), Interval: "1h", Window: 10 * day}
+	for _, msg := range []string{plan.RangeError().Error(), plan.Describe()} {
+		if !strings.Contains(msg, "2024-01-01T06:00:00Z..2024-01-20T06:00:00Z") {
+			t.Errorf("message drops the time of day: %s", msg)
+		}
+	}
+}

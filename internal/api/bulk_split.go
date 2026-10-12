@@ -24,6 +24,23 @@ const (
 	maxWindowShrinks = 3
 )
 
+// intervalDuration is the length of one data interval at the resolution; a
+// window shorter than it returns no points, so halving stops there.
+func intervalDuration(interval string) time.Duration {
+	switch interval {
+	case "10m":
+		return 10 * time.Minute
+	case "1h":
+		return time.Hour
+	case "1w":
+		return 7 * 24 * time.Hour
+	case "1month":
+		return 31 * 24 * time.Hour
+	default:
+		return 24 * time.Hour
+	}
+}
+
 // BulkWindow returns the longest time range the API accepts in one bulk
 // request at the given resolution.
 func BulkWindow(interval string) time.Duration {
@@ -104,13 +121,13 @@ func (plan BulkPlan) Windows() []Window {
 // RangeError explains why the range needs --split.
 func (plan BulkPlan) RangeError() error {
 	return fmt.Errorf("range %s..%s exceeds the API limit of %s per bulk request at %s; shorten it or add --split to fetch it in %d requests",
-		plan.Since.Format(time.DateOnly), plan.Until.Format(time.DateOnly), days(plan.Window), plan.Interval, len(plan.Windows()))
+		formatBound(plan.Since), formatBound(plan.Until), days(plan.Window), plan.Interval, len(plan.Windows()))
 }
 
 // Describe summarises the split for a warning to the user.
 func (plan BulkPlan) Describe() string {
 	return fmt.Sprintf("splitting %s..%s into %d requests of up to %s (%s); the result is assembled in memory",
-		plan.Since.Format(time.DateOnly), plan.Until.Format(time.DateOnly), len(plan.Windows()), days(plan.Window), plan.Interval)
+		formatBound(plan.Since), formatBound(plan.Until), len(plan.Windows()), days(plan.Window), plan.Interval)
 }
 
 // WindowParams returns params with s and u set to the window's bounds.
@@ -141,7 +158,9 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 		w := windows[0]
 		resp, err := c.GetMetricBulk(ctx, path, WindowParams(params, w), repeated)
 		if err != nil {
-			if isRangeTooLarge(err) && shrinks < maxWindowShrinks {
+			// A window shorter than one interval would return no points and
+			// turn the rest of the fetch into silent gaps, so halving stops there.
+			if isRangeTooLarge(err) && shrinks < maxWindowShrinks && plan.Window/2 >= intervalDuration(plan.Interval) {
 				shrinks++
 				plan.Window /= 2
 				continue
