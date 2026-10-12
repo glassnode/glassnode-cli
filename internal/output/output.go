@@ -77,6 +77,13 @@ func PrintCSV(w io.Writer, data interface{}, timestampFormat string) error {
 				return err
 			}
 		}
+	case api.CreditsSummary:
+		if err := write([]string{"limit", "period", "used", "left"}); err != nil {
+			return err
+		}
+		if err := write([]string{strconv.Itoa(v.CreditsLimit), string(v.CreditsPeriod), optionalInt(v.CreditsUsed), optionalInt(v.CreditsLeft)}); err != nil {
+			return err
+		}
 	case []api.Asset:
 		if err := write([]string{"id", "symbol", "name", "asset_type", "categories"}); err != nil {
 			return err
@@ -193,6 +200,8 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 		for _, s := range v {
 			table.Append([]string{s})
 		}
+	case api.CreditsSummary:
+		return printCreditsTable(w, v)
 	case []api.Asset:
 		table.SetHeader([]string{"ID", "Symbol", "Name", "Type", "Categories"})
 		for _, a := range v {
@@ -274,6 +283,36 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 
 	table.Render()
 	return nil
+}
+
+// printCreditsTable lays the allowance out as labelled lines, like the metric
+// metadata table. A daily allowance counts requests, a monthly one credits;
+// usage is unknown when the period is not one the CLI knows.
+func printCreditsTable(w io.Writer, s api.CreditsSummary) error {
+	unit := "credits"
+	switch s.CreditsPeriod {
+	case api.CreditsPeriodDaily:
+		unit = "requests"
+	case api.CreditsPeriodMonthly:
+	default:
+		unit = ""
+	}
+	fmt.Fprintf(w, "Period: %s\n", s.CreditsPeriod)
+	fmt.Fprintf(w, "Limit:  %s\n", strings.TrimSpace(fmt.Sprintf("%d %s", s.CreditsLimit, unit)))
+	if s.CreditsUsed == nil || s.CreditsLeft == nil {
+		fmt.Fprintln(w, "Used:   unknown for this period")
+		return nil
+	}
+	fmt.Fprintf(w, "Used:   %d\n", *s.CreditsUsed)
+	fmt.Fprintf(w, "Left:   %d\n", *s.CreditsLeft)
+	return nil
+}
+
+func optionalInt(n *int) string {
+	if n == nil {
+		return ""
+	}
+	return strconv.Itoa(*n)
 }
 
 func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {

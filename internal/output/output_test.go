@@ -391,3 +391,40 @@ func TestLargeIntegersKeepPrecision(t *testing.T) {
 		t.Errorf("CSV got %q, want %q", got, want)
 	}
 }
+
+func TestCreditsSummary_TableAndCSV(t *testing.T) {
+	used, left := 2, 48
+	daily := api.CreditsSummary{CreditsLimit: 50, CreditsPeriod: api.CreditsPeriodDaily, CreditsUsed: &used, CreditsLeft: &left}
+	var table bytes.Buffer
+	if err := PrintTable(&table, daily, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Period: daily", "Limit:  50 requests", "Used:   2", "Left:   48"} {
+		if !strings.Contains(table.String(), want) {
+			t.Errorf("table lacks %q:\n%s", want, table.String())
+		}
+	}
+	var csvOut bytes.Buffer
+	if err := PrintCSV(&csvOut, daily, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := csvOut.String(), "limit,period,used,left\n50,daily,2,48\n"; got != want {
+		t.Errorf("csv got %q want %q", got, want)
+	}
+
+	unknown := api.CreditsSummary{CreditsLimit: 300, CreditsPeriod: "weekly"}
+	table.Reset()
+	if err := PrintTable(&table, unknown, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(table.String(), "Limit:  300\n") || !strings.Contains(table.String(), "unknown for this period") {
+		t.Errorf("unknown period table:\n%s", table.String())
+	}
+	csvOut.Reset()
+	if err := PrintCSV(&csvOut, unknown, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := csvOut.String(), "limit,period,used,left\n300,weekly,,\n"; got != want {
+		t.Errorf("unknown period csv got %q want %q", got, want)
+	}
+}
