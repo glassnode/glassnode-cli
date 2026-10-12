@@ -134,7 +134,7 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 	// only intervals ending by u), so index is a guard: should a timestamp
 	// repeat, the later response, which is at least as fresh, replaces it.
 	index := map[int64]int{}
-	shrinks := 0
+	shrinks, fetched := 0, 0
 	since := plan.Since
 	for since.Before(plan.Until) {
 		windows := BulkPlan{Since: since, Until: plan.Until, Interval: plan.Interval, Window: plan.Window}.Windows()
@@ -146,10 +146,11 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 				plan.Window /= 2
 				continue
 			}
-			done := len(plan.Windows()) - len(windows)
-			return nil, fmt.Errorf("window %d/%d (%s..%s): %w; the fetch is aborted, retry it with --since %s",
-				done+1, len(plan.Windows()), w.Since.Format(time.DateOnly), w.Until.Format(time.DateOnly), err, w.Since.Format(time.DateOnly))
+			// The total is an estimate: a halved window changes how many remain.
+			return nil, fmt.Errorf("window %d of about %d (%s..%s): %w; the fetch is aborted, retry it with --since %s",
+				fetched+1, fetched+len(windows), formatBound(w.Since), formatBound(w.Until), err, formatBound(w.Since))
 		}
+		fetched++
 		for _, point := range resp.Data {
 			if i, ok := index[point.T]; ok {
 				merged.Data[i] = point
@@ -173,6 +174,17 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 func isRangeTooLarge(err error) bool {
 	var apiErr *glassnode.APIError
 	return errors.As(err, &apiErr) && apiErr.StatusCode == 400 && strings.Contains(strings.ToLower(apiErr.Detail), "time range")
+}
+
+// formatBound shows a window bound as a date when it is at midnight UTC and
+// as an RFC 3339 timestamp otherwise, both of which --since accepts, so a
+// retry of an hourly or 10-minute fetch resumes exactly at the bound.
+func formatBound(t time.Time) string {
+	t = t.UTC()
+	if t.Equal(t.Truncate(24 * time.Hour)) {
+		return t.Format(time.DateOnly)
+	}
+	return t.Format(time.RFC3339)
 }
 
 func days(d time.Duration) string {
