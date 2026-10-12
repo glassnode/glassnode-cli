@@ -1,1 +1,1 @@
-{"creditsUsed":6,"apiAddons":[{"value":1500000}]}
+{"customerId":4568,"creditsUsed":6,"dailyRequestsUsed":2,"apiAddons":[{"rpm":100,"value":1500000,"version":"v3","period":"monthly"}],"dataPackages":[],"allDataPackages":[{"name":"On-Chain Data","dataSharingGroups":["onchain"]},{"name":"Market Data","dataSharingGroups":["market"]}]}
