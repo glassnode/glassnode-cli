@@ -58,7 +58,7 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 	plan.Window = BulkWindow(plan.Interval)
 	raw, ok := params["s"]
 	if !ok {
-		return plan, fmt.Errorf("bulk metrics require --since: the API accepts at most %s per request at %s (add --split to fetch a longer range in several requests)",
+		return plan, fmt.Errorf("bulk metrics require --since (at most %s per request at %s; for a longer range add --split as well)",
 			days(plan.Window), plan.Interval)
 	}
 	since, err := strconv.ParseInt(raw, 10, 64)

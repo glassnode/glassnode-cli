@@ -23,7 +23,7 @@ func unix(t time.Time) string { return strconv.FormatInt(t.Unix(), 10) }
 func TestPlanBulk(t *testing.T) {
 	t.Run("requires since", func(t *testing.T) {
 		_, err := PlanBulk(map[string]string{}, planNow)
-		if err == nil || !strings.Contains(err.Error(), "--since") || !strings.Contains(err.Error(), "31 days") {
+		if err == nil || !strings.Contains(err.Error(), "--since") || !strings.Contains(err.Error(), "31 days") || !strings.Contains(err.Error(), "add --split as well") {
 			t.Fatalf("err = %v", err)
 		}
 	})
