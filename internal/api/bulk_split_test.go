@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
 
 var (
@@ -204,5 +206,22 @@ func TestGetMetricBulkSplitKeepsLaterPointOnOverlap(t *testing.T) {
 	}
 	if len(resp.Data) != 2 || len(resp.Data[1].Bulk) != 2 {
 		t.Fatalf("points=%d boundary entries=%d, want 2 and 2 (from the later window)", len(resp.Data), len(resp.Data[1].Bulk))
+	}
+}
+
+func TestIsRangeTooLarge(t *testing.T) {
+	for _, tt := range []struct {
+		status int
+		detail string
+		want   bool
+	}{
+		{400, "too large time range (155664h0m0s) requested (maximum allowed is 744h0m0s)", true},
+		{400, "Requested Time Range is too large", true},
+		{400, "parameter a=NOPE is invalid", false},
+		{403, "time range not in your plan", false},
+	} {
+		if got := isRangeTooLarge(&glassnode.APIError{StatusCode: tt.status, Detail: tt.detail}); got != tt.want {
+			t.Errorf("isRangeTooLarge(%d %q) = %v, want %v", tt.status, tt.detail, got, tt.want)
+		}
 	}
 }

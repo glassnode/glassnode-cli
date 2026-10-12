@@ -166,9 +166,13 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 	return merged, nil
 }
 
+// isRangeTooLarge reports the API's rejection of a window as too long. Other
+// 400s (an invalid asset, an unsupported parameter combination) are not
+// treated as a reason to halve: that would spend requests and replace the
+// API's message with one about window size.
 func isRangeTooLarge(err error) bool {
 	var apiErr *glassnode.APIError
-	return errors.As(err, &apiErr) && apiErr.StatusCode == 400 && strings.Contains(apiErr.Detail, "too large time range")
+	return errors.As(err, &apiErr) && apiErr.StatusCode == 400 && strings.Contains(strings.ToLower(apiErr.Detail), "time range")
 }
 
 func days(d time.Duration) string {
