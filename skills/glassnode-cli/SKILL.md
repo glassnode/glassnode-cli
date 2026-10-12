@@ -79,10 +79,19 @@ Example JSON output:
 ```json
 {
   "creditsLeft": integer,
-  "creditsPerMonth": integer,
+  "creditsLimit": integer,
+  "creditsPeriod": "daily" | "monthly",
   "creditsUsed": integer
 }
 ```
+
+All four fields describe the same window. `creditsLimit` is the allowance per
+`creditsPeriod` (`daily` on the advanced product, `monthly` on every other one),
+and `creditsUsed` and `creditsLeft` are the usage and remainder within it; on a
+daily allowance the unit is requests. Never report the limit or the usage as
+monthly without reading `creditsPeriod`. If `creditsPeriod` is anything else
+(or `mixed`), `creditsUsed` and `creditsLeft` are absent: say the usage is
+unknown instead of computing it.
 
 ### Config set / get
 ```bash

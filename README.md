@@ -254,10 +254,22 @@ Example output:
 ```json
 {
   "creditsLeft": integer,
-  "creditsPerMonth": integer,
+  "creditsLimit": integer,
+  "creditsPeriod": "daily" | "monthly",
   "creditsUsed": integer
 }
 ```
+
+All four fields describe the same window. `creditsLimit` is the allowance granted
+per `creditsPeriod`, both read from your account's API addon, and `creditsUsed`
+and `creditsLeft` are the usage and remainder within that window. The period
+depends on your plan: the advanced product is metered **daily**, in requests,
+every other product **monthly**, in credits.
+
+If the API reports a period the CLI does not know, or add-ons of different
+periods, `creditsPeriod` carries what the API sent (or `mixed`) and
+`creditsUsed` and `creditsLeft` are omitted rather than measured against a
+counter of another period.
 
 ### `gn config set key=value`
 
