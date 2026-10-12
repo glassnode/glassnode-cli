@@ -192,7 +192,6 @@ gn metric list --from-exchange binance --to-exchange coinbase
 | `--currency` | `-c` | Filter by currency (e.g. `native`, `usd`) |
 | `--exchange` | `-e` | Filter by exchange (e.g. `binance`, `coinbase`) |
 | `--interval` | `-i` | Filter by time interval (e.g. `1h`, `24h`) |
-| `--format` | `-f` | Keep only metrics available in this response format (`csv` or `json`) |
 | `--from-exchange` | | Source exchange for inter-exchange metrics |
 | `--to-exchange` | | Destination exchange for inter-exchange metrics |
 | `--miner` | | Miner identifier for mining-related metrics |
@@ -200,12 +199,6 @@ gn metric list --from-exchange binance --to-exchange coinbase
 | `--network` | | Network/blockchain for cross-chain metrics |
 | `--period` | | Time period for aggregation |
 | `--quote-symbol` | | Quote currency symbol for trading pairs |
-
-`--format` is applied by the CLI: the API's own format filter returns no
-metrics, so the CLI reads each listed metric's metadata and keeps those whose
-supported formats include the one asked for. That is one metadata request per
-metric (no credits; a progress note goes to stderr), so narrow the list with
-the other filters where you can.
 
 ### `gn metric describe <path>`
 

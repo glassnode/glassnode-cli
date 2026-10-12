@@ -1,14 +1,7 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"slices"
-	"strings"
-	"sync/atomic"
 	"testing"
 )
 
@@ -142,61 +135,5 @@ func TestTrimBulkSuffix(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("TrimBulkSuffix(%q) = %q, want %q", tt.path, got, tt.want)
 		}
-	}
-}
-
-func TestFilterMetricsByFormat(t *testing.T) {
-	formats := map[string][]string{
-		"/market/price": {"csv", "json"}, "/derivatives/term_structure": {"json"},
-		"/market/hodl_cave": {"CSV", "json"}, "/indicators/urpd": {"json"},
-	}
-	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		path := r.URL.Query().Get("path")
-		f, ok := formats[path]
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, "metadata not found: path=%s", path)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"path": path, "parameters": map[string]any{"f": f, "a": []string{"BTC"}}})
-	}))
-	defer server.Close()
-	client := NewClient("key", "")
-	client.baseURL = server.URL
-	client.httpClient = server.Client()
-
-	paths := []string{"/market/price", "/derivatives/term_structure", "/options/smile", "/market/hodl_cave", "/indicators/urpd"}
-	kept, skipped, err := client.FilterMetricsByFormat(context.Background(), paths, "csv")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"/market/price", "/market/hodl_cave"}; !slices.Equal(kept, want) {
-		t.Errorf("kept = %v, want %v (in list order)", kept, want)
-	}
-	if want := []string{"/options/smile"}; !slices.Equal(skipped, want) {
-		t.Errorf("skipped = %v, want %v", skipped, want)
-	}
-	if calls.Load() != int32(len(paths)) {
-		t.Errorf("metadata calls = %d, want %d", calls.Load(), len(paths))
-	}
-	kept, _, err = client.FilterMetricsByFormat(context.Background(), paths, "json")
-	if err != nil || len(kept) != 4 {
-		t.Errorf("json: kept=%v err=%v", kept, err)
-	}
-}
-
-func TestFilterMetricsByFormat_AbortsOnOtherErrors(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprint(w, `{"message":"no access"}`)
-	}))
-	defer server.Close()
-	client := NewClient("key", "")
-	client.baseURL = server.URL
-	client.httpClient = server.Client()
-	if _, _, err := client.FilterMetricsByFormat(context.Background(), []string{"/a", "/b"}, "csv"); err == nil || !strings.Contains(err.Error(), "no access") {
-		t.Fatalf("err = %v, want the API error", err)
 	}
 }
