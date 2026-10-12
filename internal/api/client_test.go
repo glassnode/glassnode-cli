@@ -556,8 +556,8 @@ func TestGetMetric(t *testing.T) {
 	if points[0].T != 1230940800 {
 		t.Errorf("got T %d, want 1230940800", points[0].T)
 	}
-	if points[0].V != 2.4755000000000003 {
-		t.Errorf("got V %v, want 2.4755000000000003", points[0].V)
+	if points[0].V != json.Number("2.4755000000000003") {
+		t.Errorf("got V %v, want the API's number 2.4755000000000003 unchanged", points[0].V)
 	}
 }
 

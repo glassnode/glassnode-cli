@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,6 +10,9 @@ import (
 	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
 
+// DataPoint is a metric point as the API sent it. Numbers are json.Number,
+// since the SDK decodes with UseNumber: -o json prints them unchanged and
+// integers above 2^53 keep their precision.
 type DataPoint struct {
 	T int64                  `json:"t"`
 	V interface{}            `json:"v,omitempty"`
@@ -26,12 +28,6 @@ type BulkDataPoint struct {
 
 type BulkResponse struct {
 	Data []BulkDataPoint `json:"data"`
-}
-
-// UnmarshalJSON keeps the CLI's historical dynamic number/output behavior.
-func (p *DataPoint) UnmarshalJSON(data []byte) error {
-	type wire DataPoint
-	return json.Unmarshal(data, (*wire)(p))
 }
 
 // metricParams maps the CLI's flat query parameters onto the SDK's typed

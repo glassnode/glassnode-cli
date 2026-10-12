@@ -62,7 +62,7 @@ func TestPlanBulk(t *testing.T) {
 func TestBulkPlanWindows(t *testing.T) {
 	plan := BulkPlan{Since: planSince, Until: planSince.Add(70 * day), Interval: "24h", Window: 31 * day}
 	windows := plan.Windows()
-	if len(windows) != 3 || plan.Fits() {
+	if len(windows) != 3 {
 		t.Fatalf("windows = %v", windows)
 	}
 	for i := 1; i < len(windows); i++ {
@@ -76,8 +76,8 @@ func TestBulkPlanWindows(t *testing.T) {
 	if !strings.Contains(plan.RangeError().Error(), "3 requests") || !strings.Contains(plan.Describe(), "3 requests of up to 31 days (24h)") {
 		t.Errorf("messages: %v / %s", plan.RangeError(), plan.Describe())
 	}
-	if one := (BulkPlan{Since: planSince, Until: planSince.Add(day), Window: 31 * day}); !one.Fits() {
-		t.Error("one-day range should fit")
+	if one := (BulkPlan{Since: planSince, Until: planSince.Add(day), Window: 31 * day}).Windows(); len(one) != 1 {
+		t.Errorf("one-day range should be one window, got %d", len(one))
 	}
 }
 

@@ -101,9 +101,6 @@ func (plan BulkPlan) Windows() []Window {
 	return windows
 }
 
-// Fits reports whether the whole range can be fetched in one request.
-func (plan BulkPlan) Fits() bool { return len(plan.Windows()) == 1 }
-
 // RangeError explains why the range needs --split.
 func (plan BulkPlan) RangeError() error {
 	return fmt.Errorf("range %s..%s exceeds the API limit of %s per bulk request at %s; shorten it or add --split to fetch it in %d requests",

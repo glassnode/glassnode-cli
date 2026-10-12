@@ -371,3 +371,23 @@ func TestPrintCSV_ComputedAtColumn(t *testing.T) {
 		t.Errorf("computed_at column shown without PIT data: %q", plain.String())
 	}
 }
+
+// Values arrive as json.Number from the SDK; neither JSON nor CSV output may
+// round them through float64.
+func TestLargeIntegersKeepPrecision(t *testing.T) {
+	data := []api.DataPoint{{T: 1, V: json.Number("12345678901234567890")}}
+	var jsonOut bytes.Buffer
+	if err := PrintJSON(&jsonOut, data); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(jsonOut.String(), `"v": 12345678901234567890`) {
+		t.Errorf("JSON rounded the value: %s", jsonOut.String())
+	}
+	var csvOut bytes.Buffer
+	if err := PrintCSV(&csvOut, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := csvOut.String(), "t,v\n1,12345678901234567890\n"; got != want {
+		t.Errorf("CSV got %q, want %q", got, want)
+	}
+}
