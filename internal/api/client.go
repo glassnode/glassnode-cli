@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -87,14 +86,12 @@ func (s *sessionTokens) Token(ctx context.Context) (string, error) {
 }
 
 // Refresh exchanges the stored refresh token for a new access token after a
-// 401 and keeps it for the following requests. An expired session is reported
-// to the user through the SDK's AuthError.
+// 401 and keeps it for the following requests. A failure, including an
+// expired session, reaches the user with its cause through the SDK's
+// AuthError, so nothing is printed here.
 func (s *sessionTokens) Refresh(ctx context.Context) (string, error) {
 	fresh, err := oauth.ForceRefreshAccessToken(ctx)
 	if err != nil {
-		if !errors.Is(err, oauth.ErrSessionExpired) {
-			_, _ = fmt.Fprintln(stderr, "warning: OAuth refresh after HTTP 401 failed")
-		}
 		return "", err
 	}
 	s.mu.Lock()

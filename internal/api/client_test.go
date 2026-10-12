@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 	"github.com/glassnode/glassnode-cli/internal/config"
 	"github.com/glassnode/glassnode-cli/internal/oauth"
 	"github.com/glassnode/glassnode-cli/internal/testhelper"
@@ -836,4 +838,35 @@ func TestGetMetricBulk_PassesEntriesThrough(t *testing.T) {
 	if got, want := string(encoded), `[{"a":"BTC","period":7,"v":12345678901234567890},{"a":"ETH","v":{"c":2,"o":1}}]`; got != want {
 		t.Errorf("bulk entries\n got %s\nwant %s", got, want)
 	}
+}
+
+// A failed refresh after a 401 surfaces its cause in the returned error.
+func TestDo_401RefreshFailureReportsCause(t *testing.T) {
+	withTempHome(t, func() {
+		api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+		}))
+		defer api.Close()
+		idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"refresh token revoked"}`))
+		}))
+		defer idp.Close()
+		restore := oauth.OverrideDefaultsForTesting(idp.URL, "https://api.example", "cid")
+		defer restore()
+		if err := config.SaveOAuthSession(config.OAuthSession{AccessToken: "stale", RefreshToken: "rt1", ExpiresAt: time.Now().UTC().Add(time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+
+		client := NewClient("", "stale")
+		client.baseURL = api.URL
+		client.httpClient = api.Client()
+
+		_, err := client.Do(context.Background(), "GET", "/v1/anything", nil)
+		var authErr *glassnode.AuthError
+		if !errors.As(err, &authErr) || !strings.Contains(err.Error(), "invalid_grant") || !strings.Contains(err.Error(), "refresh token revoked") {
+			t.Fatalf("err = %v, want an AuthError carrying the IdP's cause", err)
+		}
+	})
 }
