@@ -2,8 +2,13 @@ package api
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
 
 	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
@@ -81,6 +86,81 @@ func (c *Client) ListMetrics(ctx context.Context, params map[string]string, repe
 		return nil, err
 	}
 	return client.ListMetrics(ctx, &glassnode.MetricParams{Extra: queryValues(params, repeated)})
+}
+
+// metadataWorkers bounds concurrent metadata requests; the metadata endpoints
+// have their own rate limit of 1200 requests per minute.
+const metadataWorkers = 8
+
+// FilterMetricsByFormat keeps the metrics whose metadata lists format among
+// the response formats they support (parameters.f). The API's own f filter on
+// the metric list returns no metrics for any value, so the CLI reads each
+// metric's metadata instead; metadata requests spend no credits. Metrics the
+// API has no metadata for are returned in skipped rather than guessed.
+func (c *Client) FilterMetricsByFormat(ctx context.Context, paths []string, format string) (kept, skipped []string, err error) {
+	client, err := c.sdk()
+	if err != nil {
+		return nil, nil, err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type verdict struct {
+		supported bool
+		missing   bool
+		err       error
+	}
+	verdicts := make([]verdict, len(paths))
+	jobs := make(chan int)
+	var group sync.WaitGroup
+	for range metadataWorkers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for i := range jobs {
+				meta, err := client.GetMetricMetadata(ctx, paths[i], nil)
+				var apiErr *glassnode.APIError
+				switch {
+				case errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound:
+					verdicts[i] = verdict{missing: true}
+				case err != nil:
+					verdicts[i] = verdict{err: err}
+					cancel() // no point finishing the others
+				default:
+					verdicts[i] = verdict{supported: slices.ContainsFunc(meta.Parameters["f"], func(f string) bool { return strings.EqualFold(f, format) })}
+				}
+			}
+		}()
+	}
+	for i := range paths {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	close(jobs)
+	group.Wait()
+
+	for i, v := range verdicts {
+		switch {
+		case v.err != nil:
+			return nil, nil, fmt.Errorf("checking metadata of %s: %w", paths[i], v.err)
+		case v.missing:
+			skipped = append(skipped, paths[i])
+		case v.supported:
+			kept = append(kept, paths[i])
+		}
+	}
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
+	if kept == nil {
+		kept = []string{}
+	}
+	return kept, skipped, nil
 }
 
 func (c *Client) DescribeMetric(ctx context.Context, path, asset string) (*MetricMetadata, error) {

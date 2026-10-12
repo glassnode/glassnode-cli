@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/glassnode/glassnode-cli/internal/api"
 	"github.com/glassnode/glassnode-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -18,6 +21,11 @@ var metricListCmd = &cobra.Command{
 		client := api.NewClient(apiKey, bearer)
 
 		params, repeatedParams := metricListParamsFromFlags(cmd)
+		format, _ := cmd.Flags().GetString("format")
+		format = strings.ToLower(format)
+		if format != "" && format != "csv" && format != "json" {
+			return fmt.Errorf("--format must be csv or json, got %q", format)
+		}
 
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		if dryRun {
@@ -26,6 +34,9 @@ var metricListCmd = &cobra.Command{
 				return err
 			}
 			printDryRun(cmd, client, u)
+			if format != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(), "# --format then reads each listed metric's metadata (/v1/metadata/metric?path=...)")
+			}
 			return nil
 		}
 
@@ -33,9 +44,22 @@ var metricListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if format != "" {
+			// The API's f filter returns nothing; check each metric's metadata
+			// instead. Metadata requests cost no credits.
+			fmt.Fprintf(cmd.ErrOrStderr(), "# checking the metadata of %d metrics for %s support\n", len(metrics), format)
+			kept, skipped, err := client.FilterMetricsByFormat(cmd.Context(), metrics, format)
+			if err != nil {
+				return err
+			}
+			if len(skipped) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "# %d metrics have no metadata and were left out\n", len(skipped))
+			}
+			metrics = kept
+		}
 
-		format, _ := cmd.Flags().GetString("output")
-		return output.Print(output.Options{Format: format, Data: metrics})
+		outputFormat, _ := cmd.Flags().GetString("output")
+		return output.Print(output.Options{Format: outputFormat, Data: metrics})
 	},
 }
 
@@ -94,6 +118,7 @@ func init() {
 	metricListCmd.Flags().StringArray("assets", nil, "filter by assets (multiple, e.g. --assets BTC --assets ETH)")
 	metricListCmd.Flags().StringP("currency", "c", "", "filter by currency (e.g. native, usd)")
 	metricListCmd.Flags().StringP("exchange", "e", "", "filter by exchange (e.g. binance, coinbase)")
+	metricListCmd.Flags().StringP("format", "f", "", "keep only metrics available in this response format (csv or json); reads each metric's metadata")
 	metricListCmd.Flags().StringP("interval", "i", "", "filter by time interval (e.g. 1h, 24h)")
 	metricListCmd.Flags().String("from-exchange", "", "source exchange for inter-exchange metrics")
 	metricListCmd.Flags().String("to-exchange", "", "destination exchange for inter-exchange metrics")
