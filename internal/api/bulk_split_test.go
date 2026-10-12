@@ -182,3 +182,27 @@ func TestWindowParams(t *testing.T) {
 		t.Errorf("out=%v params=%v", out, params)
 	}
 }
+
+// Should windows ever overlap, the later window's point replaces the earlier
+// one instead of being dropped.
+func TestGetMetricBulkSplitKeepsLaterPointOnOverlap(t *testing.T) {
+	plan := BulkPlan{Since: planSince, Until: planSince.Add(2 * day), Interval: "24h", Window: day}
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		boundary := planSince.Add(day).Unix()
+		if calls.Add(1) == 1 {
+			// The first window wrongly repeats the boundary point with one entry.
+			fmt.Fprintf(w, `{"data":[{"t":%d,"bulk":[{"a":"BTC","v":1}]},{"t":%d,"bulk":[{"a":"BTC","v":2}]}]}`, planSince.Unix(), boundary)
+			return
+		}
+		fmt.Fprintf(w, `{"data":[{"t":%d,"bulk":[{"a":"BTC","v":2},{"a":"ETH","v":3}]}]}`, boundary)
+	}))
+	t.Cleanup(server.Close)
+	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Data) != 2 || len(resp.Data[1].Bulk) != 2 {
+		t.Fatalf("points=%d boundary entries=%d, want 2 and 2 (from the later window)", len(resp.Data), len(resp.Data[1].Bulk))
+	}
+}

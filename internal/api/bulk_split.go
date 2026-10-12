@@ -130,7 +130,10 @@ func WindowParams(params map[string]string, w Window) map[string]string {
 // aborts the whole fetch: a partial result would look complete to a script.
 func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map[string]string, repeated map[string][]string, plan BulkPlan) (*BulkResponse, error) {
 	merged := &BulkResponse{}
-	seen := map[int64]bool{}
+	// Adjacent windows share no timestamp (the API rounds s down and includes
+	// only intervals ending by u), so index is a guard: should a timestamp
+	// repeat, the later response, which is at least as fresh, replaces it.
+	index := map[int64]int{}
 	shrinks := 0
 	since := plan.Since
 	for since.Before(plan.Until) {
@@ -148,10 +151,11 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 				done+1, len(plan.Windows()), w.Since.Format(time.DateOnly), w.Until.Format(time.DateOnly), err, w.Since.Format(time.DateOnly))
 		}
 		for _, point := range resp.Data {
-			if seen[point.T] {
+			if i, ok := index[point.T]; ok {
+				merged.Data[i] = point
 				continue
 			}
-			seen[point.T] = true
+			index[point.T] = len(merged.Data)
 			merged.Data = append(merged.Data, point)
 		}
 		since = w.Until
