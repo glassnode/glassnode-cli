@@ -48,11 +48,13 @@ func TestPlanBulk(t *testing.T) {
 		}
 	})
 	t.Run("since must precede until", func(t *testing.T) {
-		if _, err := PlanBulk(map[string]string{"s": unix(planNow), "u": unix(planSince)}, planNow); err == nil {
-			t.Fatal("accepted since >= until")
+		if _, err := PlanBulk(map[string]string{"s": unix(planNow), "u": unix(planSince)}, planNow); err == nil || !strings.Contains(err.Error(), "must be before --until") {
+			t.Fatalf("since >= until: %v", err)
 		}
-		if _, err := PlanBulk(map[string]string{"s": unix(planNow.Add(day))}, planNow); err == nil {
-			t.Fatal("accepted since in the future")
+		// Without --until the bound is now, and the message must not name --until.
+		_, err := PlanBulk(map[string]string{"s": unix(planNow.Add(day))}, planNow)
+		if err == nil || !strings.Contains(err.Error(), "is not in the past") || strings.Contains(err.Error(), "--until") {
+			t.Fatalf("since in the future: %v", err)
 		}
 	})
 }

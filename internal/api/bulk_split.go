@@ -77,6 +77,9 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 	}
 	plan.Until = plan.Until.UTC()
 	if !plan.Since.Before(plan.Until) {
+		if _, given := params["u"]; !given {
+			return plan, fmt.Errorf("--since (%s) is not in the past", plan.Since.Format(time.RFC3339))
+		}
 		return plan, fmt.Errorf("--since (%s) must be before --until (%s)", plan.Since.Format(time.RFC3339), plan.Until.Format(time.RFC3339))
 	}
 	return plan, nil
