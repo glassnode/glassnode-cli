@@ -9,10 +9,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // moduleRoot returns the path to the repository root (parent of cmd/).
@@ -196,5 +198,31 @@ func TestMetricGet_Bulk_WithoutSplitSendsOneRequest(t *testing.T) {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr %q lacks %q", stderr, want)
 		}
+	}
+}
+
+// The one request sent without --split carries the planned bounds, the same
+// ones --dry-run prints: a future --until is capped at now, so the API never
+// sees a range the plan did not validate.
+func TestMetricGet_Bulk_WithoutSplitSendsPlannedBounds(t *testing.T) {
+	start := time.Now()
+	var calls atomic.Int32
+	var until string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		until = r.URL.Query().Get("u")
+		fmt.Fprint(w, `{"data":[]}`)
+	}))
+	t.Cleanup(server.Close)
+	_, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir(), "GLASSNODE_BASE_URL=" + server.URL},
+		"metric", "get", "/market/price_usd_close/bulk",
+		"--api-key", "k", "--asset", "BTC", "--since", "20d", "--until", "2999-01-01",
+	)
+	if err != nil {
+		t.Fatalf("run CLI: %v\nstderr: %s", err, stderr)
+	}
+	u, convErr := strconv.ParseInt(until, 10, 64)
+	if calls.Load() != 1 || convErr != nil || u < start.Unix() || u > time.Now().Unix() {
+		t.Errorf("calls=%d u=%q, want one request with u capped at now", calls.Load(), until)
 	}
 }

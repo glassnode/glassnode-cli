@@ -102,13 +102,14 @@ var metricGetCmd = &cobra.Command{
 			}
 
 			// --split is the only consent to more than one request: without it
-			// the single request goes out as planned, and a rejection of its
-			// range is reported rather than answered with halved windows.
+			// the single request goes out as planned, with the bounds PlanBulk
+			// validated and --dry-run prints, and a rejection of its range is
+			// reported rather than answered with halved windows.
 			var resp *api.BulkResponse
 			if split {
 				resp, err = client.GetMetricBulkSplit(cmd.Context(), path, params, repeatedParams, plan)
 			} else {
-				resp, err = client.GetMetricBulk(cmd.Context(), path, params, repeatedParams)
+				resp, err = client.GetMetricBulk(cmd.Context(), path, api.WindowParams(params, windows[0]), repeatedParams)
 				if api.IsRangeTooLarge(err) {
 					err = fmt.Errorf("%w; the range is within the documented limit of %s at %s, add --split to retry it in shorter windows",
 						err, plan.WindowDays(), plan.Interval)
