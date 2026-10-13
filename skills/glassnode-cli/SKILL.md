@@ -60,10 +60,17 @@ gn metric get distribution/balance_exchanges --asset BTC --exchange binance --cu
 ```
 
 ### Bulk fetch (multiple assets)
-Append `/bulk` to the metric path. Repeat `-a` (or `--asset`) for each asset, or use `-a '*'` for all:
+Append `/bulk` to the metric path. Repeat `-a` (or `--asset`) for each asset, or use `-a '*'` for all.
+`--since` is required: the API caps one bulk request at 10 days for `10m`/`1h`, 31 days for `24h`
+(the default) and 93 days for `1w`/`1month`, counted from the start of the interval containing
+`--since` (weeks start on Monday, months on the 1st, UTC). A longer range is rejected before any request is sent
+unless `--split` is passed; the CLI then fetches consecutive windows, prints the number of requests
+on stderr, and aborts on any error naming the window and the `--since` to retry from. Each window
+is a billed request. `--split` on a non-bulk path is ignored with a note on stderr.
 ```bash
-gn metric get market/marketcap_usd/bulk -a BTC -a ETH -a SOL -s 1d
+gn metric get market/marketcap_usd/bulk -a BTC -a ETH -a SOL --since 7d
 gn metric get market/marketcap_usd/bulk -a '*' --interval 24h --since 30d
+gn metric get market/marketcap_usd/bulk -a BTC -a ETH --since 2024-01-01 --until 2024-04-01 --split
 ```
 
 ### API credit usage (`gn user credits`)
@@ -107,15 +114,15 @@ gn config get all
 |------|-------|-------------|
 | `--api-key` | | Glassnode API key |
 | `--output` | `-o` | Output format: `json` (default), `csv`, `table` |
-| `--dry-run` | | Print the request URL without executing |
+| `--dry-run` | | Print the endpoint and parameters without sending the request; the API key goes in the `X-Api-Key` header, not the URL. A preview built from the flags: the SDK appends `f=json` to metric requests and validates parameters only when sending |
 | `--timestamp-format` | | Timestamp format in output |
 
 ## Best Practices
 
 - Always call `gn metric describe <path>` before `gn metric get` to discover valid parameters, assets, exchanges, and intervals for a metric.
 - Use `--output json` (default) for structured output suitable for piping to `jq`.
-- Use `--dry-run` to preview the API request URL without executing: `gn metric get market/price_usd_close --asset BTC --since 30d --dry-run`.
-- For bulk metrics (path ending in `/bulk`), use `-a` with specific assets or `-a '*'` for all.
+- Use `--dry-run` to preview the request without sending it: `gn metric get market/price_usd_close --asset BTC --since 30d --dry-run`. The URL has no API key; it is sent in the `X-Api-Key` header.
+- For bulk metrics (path ending in `/bulk`), use `-a` with specific assets or `-a '*'` for all. `--since` is required; pass `--split` to fetch a range longer than the per-request cap in several billed requests.
 - Relative time values are supported for `--since` and `--until`: e.g. `30d`, `7d`, `1h`.
 
 ## Output Formats
