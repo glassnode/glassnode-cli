@@ -25,7 +25,7 @@ func unix(t time.Time) string { return strconv.FormatInt(t.Unix(), 10) }
 func TestPlanBulk(t *testing.T) {
 	t.Run("requires since", func(t *testing.T) {
 		_, err := PlanBulk(map[string]string{}, planNow)
-		if err == nil || !strings.Contains(err.Error(), "--since") || !strings.Contains(err.Error(), "31 days") || !strings.Contains(err.Error(), "add --split as well") {
+		if err == nil || !strings.Contains(err.Error(), "--since") || !strings.Contains(err.Error(), "31 days") || !strings.Contains(err.Error(), "--split fetches") {
 			t.Fatalf("err = %v", err)
 		}
 	})
@@ -56,7 +56,31 @@ func TestPlanBulk(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "is not in the past") || strings.Contains(err.Error(), "--until") {
 			t.Fatalf("since in the future: %v", err)
 		}
+		// A future --until is capped at now; the error must not report the
+		// capped value as if the user had given it.
+		_, err = PlanBulk(map[string]string{"s": unix(planNow.Add(day)), "u": unix(planNow.Add(2 * day))}, planNow)
+		if err == nil || !strings.Contains(err.Error(), "is not in the past") || strings.Contains(err.Error(), "--until") {
+			t.Fatalf("since and until in the future: %v", err)
+		}
 	})
+}
+
+// When the rejected window is the shorter tail of the range, halving the
+// nominal window would repeat the identical request; the rejected range
+// itself is halved instead.
+func TestGetMetricBulkSplitHalvesTheRejectedRange(t *testing.T) {
+	plan := BulkPlan{Since: planSince, Until: planSince.Add(12 * day), Interval: "24h", Window: 31 * day}
+	server, calls, windows := bulkServer(t, 10*day, 0)
+	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 3 || len(resp.Data) != 12 {
+		t.Fatalf("calls=%d points=%d, want 3 (12d rejected, then 6d + 6d) and 12", calls.Load(), len(resp.Data))
+	}
+	if (*windows)[1].Until.Sub((*windows)[1].Since) != 6*day {
+		t.Errorf("windows=%v, want the second one to be 6 days", *windows)
+	}
 }
 
 func TestBulkPlanWindows(t *testing.T) {

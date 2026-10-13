@@ -48,14 +48,23 @@ func (a *APIUsageResponse) Summary() CreditsSummary {
 	}
 	// An unknown or mixed period: report what the API sent rather than
 	// measuring it against a counter of another period.
-	summary := CreditsSummary{CreditsPeriod: a.APIAddons[0].Period}
+	summary := CreditsSummary{CreditsPeriod: addonPeriod(a.APIAddons[0])}
 	for _, addon := range a.APIAddons {
 		summary.CreditsLimit = max(summary.CreditsLimit, addon.Value)
-		if addon.Period != summary.CreditsPeriod {
+		if addonPeriod(addon) != summary.CreditsPeriod {
 			summary.CreditsPeriod = "mixed"
 		}
 	}
 	return summary
+}
+
+// addonPeriod is the add-on's period with the API's default, an absent
+// period, read as monthly, as the SDK does.
+func addonPeriod(addon APIAddon) CreditsPeriod {
+	if addon.Period == "" {
+		return CreditsPeriodMonthly
+	}
+	return addon.Period
 }
 
 // GetAPIUsage fetches the current API usage for the authenticated user

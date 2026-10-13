@@ -75,7 +75,7 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 	plan.Window = BulkWindow(plan.Interval)
 	raw, ok := params["s"]
 	if !ok {
-		return plan, fmt.Errorf("bulk metrics require --since (at most %s per request at %s; for a longer range add --split as well)",
+		return plan, fmt.Errorf("bulk metrics require --since (at most %s per request at %s; --split fetches a longer range in several requests)",
 			days(plan.Window), plan.Interval)
 	}
 	since, err := strconv.ParseInt(raw, 10, 64)
@@ -83,6 +83,10 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 		return plan, fmt.Errorf("parameter s: expected Unix seconds, got %q", raw)
 	}
 	plan.Since = time.Unix(since, 0).UTC()
+	// boundedByNow: the range ends at now, either because --until was not
+	// given or because it lay in the future; the error then talks about now,
+	// not about an --until the user never saw.
+	boundedByNow := true
 	if raw, ok := params["u"]; ok {
 		until, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
@@ -90,11 +94,12 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 		}
 		if t := time.Unix(until, 0).UTC(); t.Before(plan.Until) {
 			plan.Until = t
+			boundedByNow = false
 		}
 	}
 	plan.Until = plan.Until.UTC()
 	if !plan.Since.Before(plan.Until) {
-		if _, given := params["u"]; !given {
+		if boundedByNow {
 			return plan, fmt.Errorf("--since (%s) is not in the past", plan.Since.Format(time.RFC3339))
 		}
 		return plan, fmt.Errorf("--since (%s) must be before --until (%s)", plan.Since.Format(time.RFC3339), plan.Until.Format(time.RFC3339))
@@ -158,11 +163,14 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 		w := windows[0]
 		resp, err := c.GetMetricBulk(ctx, path, WindowParams(params, w), repeated)
 		if err != nil {
-			// A window shorter than one interval would return no points and
-			// turn the rest of the fetch into silent gaps, so halving stops there.
-			if isRangeTooLarge(err) && shrinks < maxWindowShrinks && plan.Window/2 >= intervalDuration(plan.Interval) {
+			// Halve the range the API actually rejected: near the end of the
+			// range it is shorter than plan.Window, and halving the nominal
+			// window could repeat the same request. A window shorter than one
+			// interval would return no points and turn the rest of the fetch
+			// into silent gaps, so halving stops there.
+			if halved := w.Until.Sub(w.Since) / 2; isRangeTooLarge(err) && shrinks < maxWindowShrinks && halved >= intervalDuration(plan.Interval) {
 				shrinks++
-				plan.Window /= 2
+				plan.Window = halved
 				continue
 			}
 			// The total is an estimate: a halved window changes how many remain.

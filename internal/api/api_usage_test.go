@@ -74,6 +74,8 @@ func TestCreditsPeriod_ComesFromTheAddon(t *testing.T) {
 		{"no addons is monthly", nil, CreditsPeriodMonthly},
 		{"a period outside the enum is reported as sent", []APIAddon{{Value: 50, Period: "weekly"}}, "weekly"},
 		{"mixed periods are reported as mixed", []APIAddon{{Value: 50, Period: "daily"}, {Value: 5000000, Period: "monthly"}}, "mixed"},
+		{"an absent period counts as monthly when mixed", []APIAddon{{Value: 50}, {Value: 5000000, Period: "monthly"}, {Value: 7, Period: "weekly"}}, "mixed"},
+		{"an absent period never surfaces as empty", []APIAddon{{Value: 50}, {Value: 60, Period: "weekly"}}, "mixed"},
 	}
 
 	for _, tt := range tests {
