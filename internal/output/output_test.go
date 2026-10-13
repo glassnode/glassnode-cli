@@ -305,7 +305,7 @@ func TestPrintTable_MetricMetadataWithOptionalFields(t *testing.T) {
 			Group: "Market",
 			Tags:  []string{"price", "market"},
 		},
-		Timerange:  &api.Timerange{Min: 1609459200, Max: 1735689600},
+		TimeRange:  &api.Timerange{Min: 1609459200, Max: 1735689600},
 		Parameters: map[string][]string{"a": {"BTC", "ETH"}, "i": {"24h"}},
 	}
 	if err := PrintTable(&buf, meta, ""); err != nil {
@@ -323,5 +323,108 @@ func TestPrintTable_MetricMetadataWithOptionalFields(t *testing.T) {
 	}
 	if !strings.Contains(out, "Parameters:") || !strings.Contains(out, "a:") || !strings.Contains(out, "BTC") {
 		t.Errorf("table should include Parameters: %q", out)
+	}
+}
+
+func TestPrintCSV_NumbersArePlainDecimal(t *testing.T) {
+	var buf bytes.Buffer
+	data := []api.DataPoint{{T: 1, V: 1738241421021.0708}, {T: 2, V: 0.000001}}
+	if err := PrintCSV(&buf, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	want := "t,v\n1,1738241421021.0708\n2,0.000001\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	var table bytes.Buffer
+	if err := PrintTable(&table, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(table.String(), "e+") {
+		t.Errorf("table uses scientific notation: %s", table.String())
+	}
+}
+
+func TestPrintCSV_ComputedAtColumn(t *testing.T) {
+	computed := int64(1791244932)
+	var buf bytes.Buffer
+	data := []api.DataPoint{{T: 1791158400, V: 664280.0, ComputedAt: &computed}, {T: 1791244800, V: 640332.0}}
+	if err := PrintCSV(&buf, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	want := "t,v,computed_at\n1791158400,664280,1791244932\n1791244800,640332,\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	var table bytes.Buffer
+	if err := PrintTable(&table, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(table.String(), "COMPUTED AT") || !strings.Contains(table.String(), "1791244932") {
+		t.Errorf("table lacks computed_at: %s", table.String())
+	}
+	var plain bytes.Buffer
+	if err := PrintCSV(&plain, []api.DataPoint{{T: 1, V: 2.0}}, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain.String(), "computed_at") {
+		t.Errorf("computed_at column shown without PIT data: %q", plain.String())
+	}
+}
+
+// Values arrive as json.Number from the SDK; neither JSON nor CSV output may
+// round them through float64.
+func TestLargeIntegersKeepPrecision(t *testing.T) {
+	data := []api.DataPoint{{T: 1, V: json.Number("12345678901234567890")}}
+	var jsonOut bytes.Buffer
+	if err := PrintJSON(&jsonOut, data); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(jsonOut.String(), `"v": 12345678901234567890`) {
+		t.Errorf("JSON rounded the value: %s", jsonOut.String())
+	}
+	var csvOut bytes.Buffer
+	if err := PrintCSV(&csvOut, data, "unix"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := csvOut.String(), "t,v\n1,12345678901234567890\n"; got != want {
+		t.Errorf("CSV got %q, want %q", got, want)
+	}
+}
+
+func TestCreditsSummary_TableAndCSV(t *testing.T) {
+	used, left := 2, 48
+	daily := api.CreditsSummary{CreditsLimit: 50, CreditsPeriod: api.CreditsPeriodDaily, CreditsUsed: &used, CreditsLeft: &left}
+	var table bytes.Buffer
+	if err := PrintTable(&table, daily, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Period: daily", "Limit:  50 requests", "Used:   2", "Left:   48"} {
+		if !strings.Contains(table.String(), want) {
+			t.Errorf("table lacks %q:\n%s", want, table.String())
+		}
+	}
+	var csvOut bytes.Buffer
+	if err := PrintCSV(&csvOut, daily, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := csvOut.String(), "limit,period,used,left\n50,daily,2,48\n"; got != want {
+		t.Errorf("csv got %q want %q", got, want)
+	}
+
+	unknown := api.CreditsSummary{CreditsLimit: 300, CreditsPeriod: "weekly"}
+	table.Reset()
+	if err := PrintTable(&table, unknown, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(table.String(), "Limit:  300\n") || !strings.Contains(table.String(), "unknown for this period") {
+		t.Errorf("unknown period table:\n%s", table.String())
+	}
+	csvOut.Reset()
+	if err := PrintCSV(&csvOut, unknown, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := csvOut.String(), "limit,period,used,left\n300,weekly,,\n"; got != want {
+		t.Errorf("unknown period csv got %q want %q", got, want)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,6 +77,13 @@ func PrintCSV(w io.Writer, data interface{}, timestampFormat string) error {
 				return err
 			}
 		}
+	case api.CreditsSummary:
+		if err := write([]string{"limit", "period", "used", "left"}); err != nil {
+			return err
+		}
+		if err := write([]string{strconv.Itoa(v.CreditsLimit), string(v.CreditsPeriod), optionalInt(v.CreditsUsed), optionalInt(v.CreditsLeft)}); err != nil {
+			return err
+		}
 	case []api.Asset:
 		if err := write([]string{"id", "symbol", "name", "asset_type", "categories"}); err != nil {
 			return err
@@ -110,27 +118,42 @@ func PrintCSV(w io.Writer, data interface{}, timestampFormat string) error {
 			cw.Flush()
 			return cw.Error()
 		}
+		computed := hasComputedAt(v)
 		if v[0].O != nil {
 			keys := sortedKeys(v[0].O)
 			header := append([]string{"t"}, keys...)
+			if computed {
+				header = append(header, "computed_at")
+			}
 			if err := write(header); err != nil {
 				return err
 			}
 			for _, dp := range v {
 				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
-					row = append(row, fmt.Sprintf("%v", dp.O[k]))
+					row = append(row, valueStr(dp.O[k]))
+				}
+				if computed {
+					row = append(row, computedAtStr(dp, timestampFormat))
 				}
 				if err := write(row); err != nil {
 					return err
 				}
 			}
 		} else {
-			if err := write([]string{"t", "v"}); err != nil {
+			header := []string{"t", "v"}
+			if computed {
+				header = append(header, "computed_at")
+			}
+			if err := write(header); err != nil {
 				return err
 			}
 			for _, dp := range v {
-				if err := write([]string{formatTimestamp(dp.T, timestampFormat), fmt.Sprintf("%v", dp.V)}); err != nil {
+				row := []string{formatTimestamp(dp.T, timestampFormat), valueStr(dp.V)}
+				if computed {
+					row = append(row, computedAtStr(dp, timestampFormat))
+				}
+				if err := write(row); err != nil {
 					return err
 				}
 			}
@@ -152,7 +175,7 @@ func PrintCSV(w io.Writer, data interface{}, timestampFormat string) error {
 			for _, entry := range dp.Bulk {
 				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
-					row = append(row, fmt.Sprintf("%v", entry[k]))
+					row = append(row, valueStr(entry[k]))
 				}
 				if err := write(row); err != nil {
 					return err
@@ -177,6 +200,8 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 		for _, s := range v {
 			table.Append([]string{s})
 		}
+	case api.CreditsSummary:
+		return printCreditsTable(w, v)
 	case []api.Asset:
 		table.SetHeader([]string{"ID", "Symbol", "Name", "Type", "Categories"})
 		for _, a := range v {
@@ -201,21 +226,36 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 		if len(v) == 0 {
 			return nil
 		}
+		computed := hasComputedAt(v)
 		if v[0].O != nil {
 			keys := sortedKeys(v[0].O)
 			header := append([]string{"TIME"}, upperAll(keys)...)
+			if computed {
+				header = append(header, "COMPUTED AT")
+			}
 			table.SetHeader(header)
 			for _, dp := range v {
 				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
-					row = append(row, fmt.Sprintf("%v", dp.O[k]))
+					row = append(row, valueStr(dp.O[k]))
+				}
+				if computed {
+					row = append(row, computedAtStr(dp, timestampFormat))
 				}
 				table.Append(row)
 			}
 		} else {
-			table.SetHeader([]string{"TIME", "VALUE"})
+			header := []string{"TIME", "VALUE"}
+			if computed {
+				header = append(header, "COMPUTED AT")
+			}
+			table.SetHeader(header)
 			for _, dp := range v {
-				table.Append([]string{formatTimestamp(dp.T, timestampFormat), fmt.Sprintf("%v", dp.V)})
+				row := []string{formatTimestamp(dp.T, timestampFormat), valueStr(dp.V)}
+				if computed {
+					row = append(row, computedAtStr(dp, timestampFormat))
+				}
+				table.Append(row)
 			}
 		}
 	case *api.BulkResponse:
@@ -232,7 +272,7 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 			for _, entry := range dp.Bulk {
 				row := []string{formatTimestamp(dp.T, timestampFormat)}
 				for _, k := range keys {
-					row = append(row, fmt.Sprintf("%v", entry[k]))
+					row = append(row, valueStr(entry[k]))
 				}
 				table.Append(row)
 			}
@@ -245,12 +285,42 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 	return nil
 }
 
+// printCreditsTable lays the allowance out as labelled lines, like the metric
+// metadata table. A daily allowance counts requests, a monthly one credits;
+// usage is unknown when the period is not one the CLI knows.
+func printCreditsTable(w io.Writer, s api.CreditsSummary) error {
+	unit := "credits"
+	switch s.CreditsPeriod {
+	case api.CreditsPeriodDaily:
+		unit = "requests"
+	case api.CreditsPeriodMonthly:
+	default:
+		unit = ""
+	}
+	fmt.Fprintf(w, "Period: %s\n", s.CreditsPeriod)
+	fmt.Fprintf(w, "Limit:  %s\n", strings.TrimSpace(fmt.Sprintf("%d %s", s.CreditsLimit, unit)))
+	if s.CreditsUsed == nil || s.CreditsLeft == nil {
+		fmt.Fprintln(w, "Used:   unknown for this period")
+		return nil
+	}
+	fmt.Fprintf(w, "Used:   %d\n", *s.CreditsUsed)
+	fmt.Fprintf(w, "Left:   %d\n", *s.CreditsLeft)
+	return nil
+}
+
+func optionalInt(n *int) string {
+	if n == nil {
+		return ""
+	}
+	return strconv.Itoa(*n)
+}
+
 func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Path:           %s\n", m.Path)
-	fmt.Fprintf(&b, "Tier:           %.0f\n", m.Tier)
+	fmt.Fprintf(&b, "Tier:           %d\n", m.Tier)
 	fmt.Fprintf(&b, "Bulk Supported: %t\n", m.BulkSupported)
-	fmt.Fprintf(&b, "PIT:            %t\n", m.IsPit)
+	fmt.Fprintf(&b, "PIT:            %t\n", m.IsPIT)
 	if m.Descriptors != nil {
 		if m.Descriptors.Name != "" {
 			fmt.Fprintf(&b, "Name:           %s\n", m.Descriptors.Name)
@@ -262,8 +332,8 @@ func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
 			fmt.Fprintf(&b, "Tags:           %s\n", strings.Join(m.Descriptors.Tags, ", "))
 		}
 	}
-	if m.Timerange != nil {
-		fmt.Fprintf(&b, "Timerange:      %d - %d\n", m.Timerange.Min, m.Timerange.Max)
+	if m.TimeRange != nil {
+		fmt.Fprintf(&b, "Timerange:      %d - %d\n", m.TimeRange.Min, m.TimeRange.Max)
 	}
 	if len(m.Parameters) > 0 {
 		fmt.Fprintln(&b, "Parameters:")
@@ -284,15 +354,42 @@ func sortedKeys(m map[string]interface{}) []string {
 	return keys
 }
 
-// valueStr formats a value for CSV/table. Slices of strings are joined with ";".
+// valueStr formats a value for CSV/table. Numbers are written in plain
+// decimal notation (1738241421021.0708, not 1.7382414210210708e+12), so they
+// load into spreadsheets as numbers; slices of strings are joined with ";".
 func valueStr(v interface{}) string {
-	if v == nil {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case []string:
+		return strings.Join(x, ";")
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(x), 'f', -1, 32)
+	case json.Number:
+		return x.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// hasComputedAt reports whether any point carries computed_at, in which case
+// the column is shown for all of them.
+func hasComputedAt(points []api.DataPoint) bool {
+	for _, dp := range points {
+		if dp.ComputedAt != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func computedAtStr(dp api.DataPoint, timestampFormat string) string {
+	if dp.ComputedAt == nil {
 		return ""
 	}
-	if ss, ok := v.([]string); ok {
-		return strings.Join(ss, ";")
-	}
-	return fmt.Sprintf("%v", v)
+	return formatTimestamp(*dp.ComputedAt, timestampFormat)
 }
 
 func upperAll(ss []string) []string {

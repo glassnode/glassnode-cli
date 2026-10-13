@@ -8,13 +8,22 @@ import (
 	"unicode"
 )
 
+// Parse reads a time as Unix seconds, a date, an RFC 3339 timestamp or a
+// duration back from now, such as 30d or 1h.
 func Parse(input string) (int64, error) {
+	return ParseAt(input, time.Now())
+}
+
+// ParseAt is Parse with relative durations measured back from now. A command
+// that parses several times and plans requests from them should use one now,
+// so that a range such as --since 31d is exactly 31 days long.
+func ParseAt(input string, now time.Time) (int64, error) {
 	if isAllDigits(input) {
 		return strconv.ParseInt(input, 10, 64)
 	}
 
 	if dur, ok := parseRelativeDuration(input); ok {
-		return time.Now().Add(-dur).Unix(), nil
+		return now.Add(-dur).Unix(), nil
 	}
 
 	if t, err := time.Parse("2006-01-02", input); err == nil {

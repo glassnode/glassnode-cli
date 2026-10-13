@@ -2,14 +2,21 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
+
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 )
 
+// DataPoint is a metric point as the API sent it. Numbers are json.Number,
+// since the SDK decodes with UseNumber: -o json prints them unchanged and
+// integers above 2^53 keep their precision.
 type DataPoint struct {
 	T int64                  `json:"t"`
 	V interface{}            `json:"v,omitempty"`
 	O map[string]interface{} `json:"o,omitempty"`
+	// ComputedAt is set by point-in-time metrics: when the value was computed.
+	ComputedAt *int64 `json:"computed_at,omitempty"`
 }
 
 type BulkDataPoint struct {
@@ -22,27 +29,36 @@ type BulkResponse struct {
 }
 
 func (c *Client) GetMetric(ctx context.Context, path string, params map[string]string) ([]DataPoint, error) {
-	normalized := NormalizePath(path)
-	body, err := c.Do(ctx, "GET", "/v1/metrics"+normalized, params)
+	client, err := c.sdk()
 	if err != nil {
-		return nil, fmt.Errorf("getting metric: %w", err)
+		return nil, err
 	}
+	// The SDK reads s, u, i, c, a and e from Extra and validates them.
+	p := &glassnode.MetricParams{Extra: queryValues(params, nil)}
 	var points []DataPoint
-	if err := json.Unmarshal(body, &points); err != nil {
-		return nil, fmt.Errorf("decoding metric response: %w", err)
+	if err := client.GetMetric(ctx, path, p, &points); err != nil {
+		return nil, fmt.Errorf("getting metric: %w", err)
 	}
 	return points, nil
 }
 
-func (c *Client) GetMetricBulk(ctx context.Context, path string, params map[string]string, repeatedParams map[string][]string) (*BulkResponse, error) {
-	normalized := NormalizePath(path)
-	body, err := c.DoWithRepeatedParams(ctx, "GET", "/v1/metrics"+normalized+"/bulk", params, repeatedParams)
+// GetMetricBulk fetches the bulk variant of a metric and returns its entries as
+// the API sent them. The CLI only prints them, so it decodes into its own rows
+// rather than the SDK's typed BulkEntry: numbers stay numbers (the SDK decodes
+// with UseNumber), large integers keep their precision and selectors or values
+// of any type pass through.
+func (c *Client) GetMetricBulk(ctx context.Context, path string, params map[string]string, repeated map[string][]string) (*BulkResponse, error) {
+	client, err := c.sdk()
 	if err != nil {
+		return nil, err
+	}
+	p := &glassnode.MetricParams{Extra: queryValues(params, repeated)}
+	var response BulkResponse
+	if err := client.GetMetric(ctx, strings.TrimSuffix(NormalizePath(path), "/")+"/bulk", p, &response); err != nil {
 		return nil, fmt.Errorf("getting bulk metric: %w", err)
 	}
-	var resp BulkResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decoding bulk metric response: %w", err)
+	if response.Data == nil {
+		response.Data = []BulkDataPoint{}
 	}
-	return &resp, nil
+	return &response, nil
 }

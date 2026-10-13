@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/glassnode/glassnode-cli/internal/api"
 	"github.com/glassnode/glassnode-cli/internal/output"
@@ -37,15 +38,18 @@ var metricGetCmd = &cobra.Command{
 
 		params := map[string]string{}
 
+		// One clock for the whole command: --since 31d then ends exactly 31
+		// days before the planned range's end, not a fraction of a second more.
+		now := time.Now().Truncate(time.Second)
 		if since != "" {
-			ts, err := timeparse.Parse(since)
+			ts, err := timeparse.ParseAt(since, now)
 			if err != nil {
 				return fmt.Errorf("parsing --since: %w", err)
 			}
 			params["s"] = fmt.Sprintf("%d", ts)
 		}
 		if until != "" {
-			ts, err := timeparse.Parse(until)
+			ts, err := timeparse.ParseAt(until, now)
 			if err != nil {
 				return fmt.Errorf("parsing --until: %w", err)
 			}
@@ -70,18 +74,50 @@ var metricGetCmd = &cobra.Command{
 				repeatedParams["e"] = exchanges
 			}
 
+			// The API requires s for bulk requests and limits the range per
+			// request; longer ranges are fetched in several requests with --split.
+			plan, err := api.PlanBulk(params, now)
+			if err != nil {
+				return err
+			}
+			split, _ := cmd.Flags().GetBool("split")
+			windows := plan.Windows()
+			if len(windows) > 1 && !split {
+				return plan.RangeError(len(windows))
+			}
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 			if dryRun {
-				u, err := client.BuildURL("/v1/metrics"+path+"/bulk", params, repeatedParams)
-				if err != nil {
-					return err
+				// One URL per window and the header note once; nothing is
+				// fetched, so the split summary does not apply.
+				urls := make([]string, 0, len(windows))
+				for _, w := range windows {
+					u, err := client.BuildURL("/v1/metrics"+path+"/bulk", api.WindowParams(params, w), repeatedParams)
+					if err != nil {
+						return err
+					}
+					urls = append(urls, u)
 				}
-				redacted, _ := api.RedactAPIKeyFromURL(u)
-				fmt.Println(redacted)
+				printDryRun(cmd, client, urls...)
 				return nil
 			}
+			if len(windows) > 1 {
+				fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe(len(windows)))
+			}
 
-			resp, err := client.GetMetricBulk(cmd.Context(), path, params, repeatedParams)
+			// --split is the only consent to more than one request: without it
+			// the single request goes out as planned, with the bounds PlanBulk
+			// validated and --dry-run prints, and a rejection of its range is
+			// reported rather than answered with halved windows.
+			var resp *api.BulkResponse
+			if split {
+				resp, err = client.GetMetricBulkSplit(cmd.Context(), path, params, repeatedParams, plan, cmd.ErrOrStderr())
+			} else {
+				resp, err = client.GetMetricBulk(cmd.Context(), path, api.WindowParams(params, windows[0]), repeatedParams)
+				if api.IsRangeTooLarge(err) {
+					err = fmt.Errorf("%w; the range is within the documented limit of %s at %s, add --split to retry it in shorter windows",
+						err, plan.WindowDays(), plan.Interval)
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -90,6 +126,11 @@ var metricGetCmd = &cobra.Command{
 			return output.Print(output.Options{Format: format, Data: resp, TimestampFormat: tsFmt})
 		}
 
+		if split, _ := cmd.Flags().GetBool("split"); split {
+			// Base metrics have no per-request range limit, so there is nothing
+			// to split; say so rather than fail a script that shares its flags.
+			fmt.Fprintln(cmd.ErrOrStderr(), "--split applies to bulk paths only and was ignored")
+		}
 		if len(assets) > 0 {
 			params["a"] = assets[0]
 		}
@@ -103,8 +144,7 @@ var metricGetCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			redacted, _ := api.RedactAPIKeyFromURL(u)
-			fmt.Println(redacted)
+			printDryRun(cmd, client, u)
 			return nil
 		}
 
@@ -127,4 +167,5 @@ func init() {
 	metricGetCmd.Flags().StringP("currency", "c", "", "native or usd")
 	metricGetCmd.Flags().StringArrayP("exchange", "e", nil, "exchange filter (repeatable for bulk)")
 	metricGetCmd.Flags().StringP("network", "n", "", "network filter")
+	metricGetCmd.Flags().Bool("split", false, "bulk only: fetch a range longer than the API allows per request in several requests")
 }
