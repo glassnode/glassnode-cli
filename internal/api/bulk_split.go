@@ -171,16 +171,16 @@ func (plan BulkPlan) Windows() []Window {
 // WindowDays is the window's length as shown to the user, such as "31 days".
 func (plan BulkPlan) WindowDays() string { return days(plan.Window) }
 
-// RangeError explains why the range needs --split.
-func (plan BulkPlan) RangeError() error {
+// RangeError explains why the range needs --split; requests is len(Windows()).
+func (plan BulkPlan) RangeError(requests int) error {
 	return fmt.Errorf("range %s..%s exceeds the API limit of %s per bulk request at %s; shorten it or add --split to fetch it in %d requests",
-		formatBound(plan.Since), formatBound(plan.Until), plan.WindowDays(), plan.Interval, len(plan.Windows()))
+		formatBound(plan.Since), formatBound(plan.Until), plan.WindowDays(), plan.Interval, requests)
 }
 
-// Describe summarises the split for a warning to the user.
-func (plan BulkPlan) Describe() string {
+// Describe summarises the split for a warning to the user; requests is len(Windows()).
+func (plan BulkPlan) Describe(requests int) string {
 	return fmt.Sprintf("splitting %s..%s into %d requests of up to %s (%s); the result is assembled in memory",
-		formatBound(plan.Since), formatBound(plan.Until), len(plan.Windows()), plan.WindowDays(), plan.Interval)
+		formatBound(plan.Since), formatBound(plan.Until), requests, plan.WindowDays(), plan.Interval)
 }
 
 // WindowParams returns params with s and u set to the window's bounds.
@@ -208,9 +208,10 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 	// repeat, the later response, which is at least as fresh, replaces it.
 	index := map[int64]int{}
 	shrinks, fetched := 0, 0
-	since := plan.Since
-	for since.Before(plan.Until) {
-		windows := BulkPlan{Since: since, Until: plan.Until, Interval: plan.Interval, Window: plan.Window}.Windows()
+	// The windows are laid out once and again only after a halving, which
+	// changes every window that remains.
+	windows := plan.Windows()
+	for len(windows) > 0 {
 		w := windows[0]
 		// One line per window: each goes through the SDK's retries and may
 		// wait on a rate limit, so a long split fetch should not fall silent.
@@ -225,6 +226,7 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 			if halved := w.Until.Sub(w.Since) / 2; IsRangeTooLarge(err) && shrinks < maxWindowShrinks && halved >= intervalDuration(plan.Interval) {
 				shrinks++
 				plan.Window = halved
+				windows = BulkPlan{Since: w.Since, Until: plan.Until, Interval: plan.Interval, Window: plan.Window}.Windows()
 				continue
 			}
 			// Nothing has been printed, so the whole command is what to retry.
@@ -245,7 +247,7 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 			index[point.T] = len(merged.Data)
 			merged.Data = append(merged.Data, point)
 		}
-		since = w.Until
+		windows = windows[1:]
 	}
 	if merged.Data == nil {
 		merged.Data = []BulkDataPoint{}

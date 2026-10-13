@@ -128,8 +128,8 @@ func TestBulkPlanWindows(t *testing.T) {
 	if !windows[0].Since.Equal(planSince) || !windows[2].Until.Equal(plan.Until) || windows[2].Until.Sub(windows[2].Since) != 8*day {
 		t.Errorf("bounds: %v", windows)
 	}
-	if !strings.Contains(plan.RangeError().Error(), "3 requests") || !strings.Contains(plan.Describe(), "3 requests of up to 31 days (24h)") {
-		t.Errorf("messages: %v / %s", plan.RangeError(), plan.Describe())
+	if !strings.Contains(plan.RangeError(len(plan.Windows())).Error(), "3 requests") || !strings.Contains(plan.Describe(len(plan.Windows())), "3 requests of up to 31 days (24h)") {
+		t.Errorf("messages: %v / %s", plan.RangeError(len(plan.Windows())), plan.Describe(len(plan.Windows())))
 	}
 	if one := (BulkPlan{Since: planSince, Until: planSince.Add(day), Window: 31 * day}).Windows(); len(one) != 1 {
 		t.Errorf("one-day range should be one window, got %d", len(one))
@@ -366,7 +366,7 @@ func TestBulkPlanWindowsAlignToIntervals(t *testing.T) {
 func TestRangeMessagesKeepIntradayBounds(t *testing.T) {
 	since := planSince.Add(6 * time.Hour)
 	plan := BulkPlan{Since: since, Until: since.Add(19 * day), Interval: "1h", Window: 10 * day}
-	for _, msg := range []string{plan.RangeError().Error(), plan.Describe()} {
+	for _, msg := range []string{plan.RangeError(len(plan.Windows())).Error(), plan.Describe(len(plan.Windows()))} {
 		if !strings.Contains(msg, "2024-01-01T06:00:00Z..2024-01-20T06:00:00Z") {
 			t.Errorf("message drops the time of day: %s", msg)
 		}

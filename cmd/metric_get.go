@@ -83,7 +83,7 @@ var metricGetCmd = &cobra.Command{
 			split, _ := cmd.Flags().GetBool("split")
 			windows := plan.Windows()
 			if len(windows) > 1 && !split {
-				return plan.RangeError()
+				return plan.RangeError(len(windows))
 			}
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 			if dryRun {
@@ -101,7 +101,7 @@ var metricGetCmd = &cobra.Command{
 				return nil
 			}
 			if len(windows) > 1 {
-				fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe())
+				fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe(len(windows)))
 			}
 
 			// --split is the only consent to more than one request: without it
