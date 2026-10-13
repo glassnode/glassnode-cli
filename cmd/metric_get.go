@@ -123,6 +123,11 @@ var metricGetCmd = &cobra.Command{
 			return output.Print(output.Options{Format: format, Data: resp, TimestampFormat: tsFmt})
 		}
 
+		if split, _ := cmd.Flags().GetBool("split"); split {
+			// Base metrics have no per-request range limit, so there is nothing
+			// to split; say so rather than fail a script that shares its flags.
+			fmt.Fprintln(cmd.ErrOrStderr(), "--split applies to bulk paths only and was ignored")
+		}
 		if len(assets) > 0 {
 			params["a"] = assets[0]
 		}

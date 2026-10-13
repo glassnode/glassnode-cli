@@ -226,3 +226,15 @@ func TestMetricGet_Bulk_WithoutSplitSendsPlannedBounds(t *testing.T) {
 		t.Errorf("calls=%d u=%q, want one request with u capped at now", calls.Load(), until)
 	}
 }
+
+func TestMetricGet_SplitOnBaseMetricIsIgnoredWithANote(t *testing.T) {
+	stdout, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir()},
+		"metric", "get", "/market/price_usd_close", "--api-key", "k", "--since", "400d", "--split", "--dry-run",
+	)
+	if err != nil {
+		t.Fatalf("run CLI: %v\nstderr: %s", err, stderr)
+	}
+	if !strings.Contains(stderr, "--split applies to bulk paths only") || strings.Contains(stdout, "split") {
+		t.Errorf("stderr=%q stdout=%q, want the note on stderr and a plain URL on stdout", stderr, stdout)
+	}
+}
