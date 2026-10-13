@@ -41,7 +41,6 @@ func NewClient(apiKey, bearerToken string) *Client {
 
 func (c *Client) sdk() (*glassnode.Client, error) {
 	c.init.Do(func() {
-		httpClient := *c.httpClient
 		options := []glassnode.Option{
 			glassnode.WithBaseURL(c.baseURL),
 			glassnode.WithUserAgent("glassnode-cli-" + version.Version),
@@ -51,7 +50,7 @@ func (c *Client) sdk() (*glassnode.Client, error) {
 			options = append(options, glassnode.WithTokenSource(&sessionTokens{token: c.bearerToken}))
 			key = ""
 		}
-		options = append(options, glassnode.WithHTTPClient(&httpClient))
+		options = append(options, glassnode.WithHTTPClient(c.httpClient))
 		c.sdkClient, c.initErr = glassnode.NewClient(key, options...)
 	})
 	return c.sdkClient, c.initErr

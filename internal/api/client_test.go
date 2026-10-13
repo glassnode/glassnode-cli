@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -798,19 +799,31 @@ func TestGetMetricBulk_KeepsAllSelectors(t *testing.T) {
 	}
 }
 
-func TestMetricParamsMapsTypedFields(t *testing.T) {
-	p, err := metricParams(map[string]string{"s": "100", "u": "200", "i": "24h", "c": "USD", "a": "BTC", "network": "eth"}, map[string][]string{"e": {"binance", "coinbase"}})
+// Selectors reach the request as given; the SDK validates them, so a
+// malformed s is rejected before anything is sent.
+func TestGetMetric_SelectorsReachTheRequest(t *testing.T) {
+	var query url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+	client := NewClient("key", "")
+	client.baseURL = server.URL
+	client.httpClient = server.Client()
+
+	_, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "100", "u": "200", "i": "24h", "c": "USD", "network": "eth"}, map[string][]string{"a": {"BTC", "ETH"}, "e": {"binance", "coinbase"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Since.Unix() != 100 || p.Until.Unix() != 200 || p.Interval != "24h" || p.Currency != "USD" || p.Asset != "BTC" || len(p.Exchanges) != 2 {
-		t.Errorf("typed fields: %+v", p)
+	if query.Get("s") != "100" || query.Get("u") != "200" || query.Get("i") != "24h" || query.Get("c") != "USD" || query.Get("network") != "eth" || len(query["a"]) != 2 || len(query["e"]) != 2 {
+		t.Errorf("query: %v", query)
 	}
-	if p.Extra.Get("network") != "eth" || p.Extra.Has("s") || p.Extra.Has("a") || p.Extra.Has("e") {
-		t.Errorf("extra: %v", p.Extra)
-	}
-	if _, err := metricParams(map[string]string{"s": "yesterday"}, nil); err == nil {
-		t.Error("accepted non-numeric since")
+	calls := 0
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ })
+	var inputErr *glassnode.InputError
+	if _, err := client.GetMetric(context.Background(), "/market/price", map[string]string{"s": "yesterday"}); !errors.As(err, &inputErr) || calls != 0 {
+		t.Errorf("err = %v, calls = %d; want an InputError and no request", err, calls)
 	}
 }
 
