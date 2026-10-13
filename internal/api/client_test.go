@@ -382,6 +382,21 @@ func TestBuildURL(t *testing.T) {
 	}
 }
 
+func TestBuildURL_BaseURLAsTheSDKSeesIt(t *testing.T) {
+	client := NewClient("test-key", "")
+	client.baseURL = "https://api.example.com/"
+	got, err := client.BuildURL("/v1/path", nil, nil)
+	if err != nil || got != "https://api.example.com/v1/path" {
+		t.Errorf("trailing slash: got %q, %v", got, err)
+	}
+	bad := NewClient("test-key", "")
+	bad.baseURL = "api.example.com"
+	var inputErr *glassnode.InputError
+	if _, err := bad.BuildURL("/v1/path", nil, nil); !errors.As(err, &inputErr) {
+		t.Errorf("a base URL the SDK rejects must fail the dry run too, got %v", err)
+	}
+}
+
 func TestListAssets(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

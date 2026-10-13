@@ -93,8 +93,13 @@ func (c *Client) DescribeMetric(ctx context.Context, path, asset string) (*Metri
 
 // BuildURL constructs the request URL without executing the request. The
 // credential is not part of it: it travels in the header named by AuthHeader.
+// The base URL is validated as the SDK validates it, so a dry run fails where
+// the request would, and trailing slashes are dropped as the SDK drops them.
 func (c *Client) BuildURL(path string, params map[string]string, repeatedParams map[string][]string) (string, error) {
-	u, err := url.Parse(c.baseURL + path)
+	if _, err := c.sdk(); err != nil {
+		return "", err
+	}
+	u, err := url.Parse(strings.TrimRight(c.baseURL, "/") + path)
 	if err != nil {
 		return "", err
 	}
