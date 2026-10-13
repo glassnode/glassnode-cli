@@ -255,8 +255,8 @@ func TestIsRangeTooLarge(t *testing.T) {
 		{400, "parameter a=NOPE is invalid", false},
 		{403, "time range not in your plan", false},
 	} {
-		if got := isRangeTooLarge(&glassnode.APIError{StatusCode: tt.status, Detail: tt.detail}); got != tt.want {
-			t.Errorf("isRangeTooLarge(%d %q) = %v, want %v", tt.status, tt.detail, got, tt.want)
+		if got := IsRangeTooLarge(&glassnode.APIError{StatusCode: tt.status, Detail: tt.detail}); got != tt.want {
+			t.Errorf("IsRangeTooLarge(%d %q) = %v, want %v", tt.status, tt.detail, got, tt.want)
 		}
 	}
 }

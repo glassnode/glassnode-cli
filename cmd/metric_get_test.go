@@ -2,12 +2,16 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -165,5 +169,32 @@ func TestMetricGet_InvalidUntil_Fails(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "until") && !strings.Contains(stderr, "parsing") && !strings.Contains(stderr, "unrecognized") {
 		t.Errorf("stderr should mention until/parsing: %q", stderr)
+	}
+}
+
+// Without --split the CLI sends the one planned request and reports the API's
+// rejection; it does not halve the window and multiply billed requests.
+func TestMetricGet_Bulk_WithoutSplitSendsOneRequest(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"message":"too large time range (744h0m0s) requested (maximum allowed is 240h0m0s)"}`)
+	}))
+	t.Cleanup(server.Close)
+	_, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir(), "GLASSNODE_BASE_URL=" + server.URL},
+		"metric", "get", "/market/price_usd_close/bulk",
+		"--api-key", "k", "--asset", "BTC", "--since", "31d",
+	)
+	if err == nil {
+		t.Fatal("expected non-zero exit when the API rejects the range")
+	}
+	if calls.Load() != 1 {
+		t.Errorf("requests = %d, want exactly 1 without --split", calls.Load())
+	}
+	for _, want := range []string{"too large time range", "add --split"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr %q lacks %q", stderr, want)
+		}
 	}
 }

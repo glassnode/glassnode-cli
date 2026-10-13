@@ -169,7 +169,7 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 			// window could repeat the same request. A window shorter than one
 			// interval would return no points and turn the rest of the fetch
 			// into silent gaps, so halving stops there.
-			if halved := w.Until.Sub(w.Since) / 2; isRangeTooLarge(err) && shrinks < maxWindowShrinks && halved >= intervalDuration(plan.Interval) {
+			if halved := w.Until.Sub(w.Since) / 2; IsRangeTooLarge(err) && shrinks < maxWindowShrinks && halved >= intervalDuration(plan.Interval) {
 				shrinks++
 				plan.Window = halved
 				continue
@@ -195,11 +195,11 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 	return merged, nil
 }
 
-// isRangeTooLarge reports the API's rejection of a window as too long. Other
+// IsRangeTooLarge reports the API's rejection of a window as too long. Other
 // 400s (an invalid asset, an unsupported parameter combination) are not
 // treated as a reason to halve: that would spend requests and replace the
 // API's message with one about window size.
-func isRangeTooLarge(err error) bool {
+func IsRangeTooLarge(err error) bool {
 	var apiErr *glassnode.APIError
 	return errors.As(err, &apiErr) && apiErr.StatusCode == 400 && strings.Contains(strings.ToLower(apiErr.Detail), "time range")
 }

@@ -101,7 +101,19 @@ var metricGetCmd = &cobra.Command{
 				return nil
 			}
 
-			resp, err := client.GetMetricBulkSplit(cmd.Context(), path, params, repeatedParams, plan)
+			// --split is the only consent to more than one request: without it
+			// the single request goes out as planned, and a rejection of its
+			// range is reported rather than answered with halved windows.
+			var resp *api.BulkResponse
+			if split {
+				resp, err = client.GetMetricBulkSplit(cmd.Context(), path, params, repeatedParams, plan)
+			} else {
+				resp, err = client.GetMetricBulk(cmd.Context(), path, params, repeatedParams)
+				if api.IsRangeTooLarge(err) {
+					err = fmt.Errorf("%w; the range is within the documented limit of %d days at %s, add --split to retry it in shorter windows",
+						err, int(plan.Window.Hours()/24), plan.Interval)
+				}
+			}
 			if err != nil {
 				return err
 			}
