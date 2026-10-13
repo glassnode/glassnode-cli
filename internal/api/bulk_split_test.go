@@ -42,12 +42,26 @@ func TestPlanBulk(t *testing.T) {
 		}
 	})
 	t.Run("a range exactly one window long is one request", func(t *testing.T) {
-		for interval, window := range map[string]time.Duration{"24h": 31 * day, "1h": 10 * day, "1month": 93 * day} {
+		for interval, window := range map[string]time.Duration{"24h": 31 * day, "1h": 10 * day, "1w": 93 * day, "1month": 93 * day} {
 			now := planNow.Add(123456789 * time.Nanosecond) // a clock read after --since was parsed
 			plan, err := PlanBulk(map[string]string{"s": unix(planNow.Add(-window)), "i": interval}, now)
 			if err != nil || len(plan.Windows()) != 1 || !plan.Until.Equal(planNow) {
 				t.Errorf("%s: windows=%v err=%v, want one window ending at %v", interval, plan.Windows(), err, planNow)
 			}
+		}
+	})
+	// The API rounds s down to the start of its interval: at 1w, --since 93d
+	// on a Wednesday counts from the Monday before and needs two requests.
+	t.Run("since is rounded down to the start of its interval", func(t *testing.T) {
+		now := time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC) // a Tuesday
+		plan, err := PlanBulk(map[string]string{"s": unix(now.Add(-93 * day)), "i": "1w"}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		monday := time.Date(2026, 7, 6, 0, 0, 0, 0, time.UTC)
+		windows := plan.Windows()
+		if !plan.Since.Equal(monday) || len(windows) != 2 || !windows[0].Until.Equal(monday.Add(91*day)) || !windows[1].Until.Equal(now) {
+			t.Fatalf("since=%v windows=%v, want 2026-07-06 and a 91-day first window", plan.Since, windows)
 		}
 	})
 	t.Run("until in the future is capped at now", func(t *testing.T) {
@@ -288,17 +302,51 @@ func TestFormatBound(t *testing.T) {
 	}
 }
 
-// At monthly resolution a 93-day window may be halved once (46 days, still
-// over one interval) but not twice (23 days would return no points).
+// At monthly resolution a 93-day window may be halved once (46.5 days, which
+// rounds down to one month) but not twice (15.5 days would return no points).
 func TestGetMetricBulkSplitDoesNotHalveBelowAnInterval(t *testing.T) {
 	plan := BulkPlan{Since: planSince, Until: planSince.Add(93 * day), Interval: "1month", Window: 93 * day}
-	server, calls, windows := bulkServer(t, 40*day, 0) // even 46 days is rejected
+	server, calls, windows := bulkServer(t, 20*day, 0) // even one month is rejected
 	_, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
 	if err == nil || !strings.Contains(err.Error(), "time range") {
 		t.Fatalf("err = %v, want the API's too-large error once halving is exhausted", err)
 	}
-	if calls.Load() != 2 || (*windows)[1].Until.Sub((*windows)[1].Since) != 46*day+12*time.Hour {
-		t.Errorf("calls=%d windows=%v, want 93d then 46.5d and no 23d window", calls.Load(), *windows)
+	if calls.Load() != 2 || !(*windows)[1].Until.Equal(time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("calls=%d windows=%v, want 93d then January and no shorter window", calls.Load(), *windows)
+	}
+}
+
+func TestIntervalStart(t *testing.T) {
+	at := time.Date(2026, 10, 15, 13, 47, 5, 0, time.UTC) // a Thursday
+	for interval, want := range map[string]time.Time{
+		"10m":    time.Date(2026, 10, 15, 13, 40, 0, 0, time.UTC),
+		"1h":     time.Date(2026, 10, 15, 13, 0, 0, 0, time.UTC),
+		"24h":    time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
+		"1w":     time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC),
+		"1month": time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+	} {
+		if got := intervalStart(at, interval); !got.Equal(want) {
+			t.Errorf("%s: %v, want %v", interval, got, want)
+		}
+	}
+	if monday := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC); !intervalStart(monday, "1w").Equal(monday) {
+		t.Errorf("a Monday is its own week start")
+	}
+}
+
+// Inner window bounds fall on interval starts, so the API rounds neither of
+// them and each window is exactly the range the plan checked.
+func TestBulkPlanWindowsAlignToIntervals(t *testing.T) {
+	monday := time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
+	plan := BulkPlan{Since: monday, Until: monday.Add(300 * day), Interval: "1w", Window: 93 * day}
+	windows := plan.Windows()
+	for i, w := range windows {
+		if i < len(windows)-1 && (w.Until.Weekday() != time.Monday || w.Until.Sub(w.Since) > 93*day) {
+			t.Errorf("window %d = %v, want a Monday bound at most 93 days on", i, w)
+		}
+		if i > 0 && !w.Since.Equal(windows[i-1].Until) {
+			t.Errorf("gap or overlap between %v and %v", windows[i-1], w)
+		}
 	}
 }
 

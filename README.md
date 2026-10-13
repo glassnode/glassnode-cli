@@ -239,7 +239,7 @@ For **bulk metrics**, append `/bulk` to the path (e.g. `market/marketcap_usd/bul
 
 Point-in-time metrics (`*_pit`) include `computed_at`, the time the value was computed, as a field in JSON and as a trailing column in CSV and table output.
 
-The API requires `--since` for bulk metrics and accepts at most 10 days per request at `10m`/`1h`, 31 days at `24h` and 93 days at `1w`/`1month`. A longer range is rejected before any request is sent unless you pass `--split`: the CLI then fetches it window by window, prints how many requests that takes on stderr, and merges the points. Every request is billed per asset, so narrow `-a` for long ranges. The merged result is assembled in memory before it is printed.
+The API requires `--since` for bulk metrics and accepts at most 10 days per request at `10m`/`1h`, 31 days at `24h` and 93 days at `1w`/`1month`, counted from the start of the interval containing `--since` (weeks start on Monday, months on the 1st, UTC). A longer range is rejected before any request is sent unless you pass `--split`: the CLI then fetches it window by window, prints how many requests that takes on stderr, and merges the points. Every request is billed per asset, so narrow `-a` for long ranges. The merged result is assembled in memory before it is printed.
 
 ### `gn user credits`
 

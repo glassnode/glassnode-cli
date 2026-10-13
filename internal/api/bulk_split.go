@@ -41,6 +41,26 @@ func intervalDuration(interval string) time.Duration {
 	}
 }
 
+// intervalStart returns the start of the interval containing t, in UTC: weeks
+// start on Monday, months on the 1st. The API rounds s and u down this way and
+// measures the range between the rounded bounds.
+func intervalStart(t time.Time, interval string) time.Time {
+	t = t.UTC()
+	switch interval {
+	case "10m":
+		return t.Truncate(10 * time.Minute)
+	case "1h":
+		return t.Truncate(time.Hour)
+	case "1w":
+		midnight := t.Truncate(24 * time.Hour)
+		return midnight.AddDate(0, 0, -(int(midnight.Weekday())+6)%7)
+	case "1month":
+		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+	default:
+		return t.Truncate(24 * time.Hour)
+	}
+}
+
 // BulkWindow returns the longest time range the API accepts in one bulk
 // request at the given resolution.
 func BulkWindow(interval string) time.Duration {
@@ -83,7 +103,9 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 	if err != nil {
 		return plan, fmt.Errorf("parameter s: expected Unix seconds, got %q", raw)
 	}
-	plan.Since = time.Unix(since, 0).UTC()
+	// The API counts the range from the start of the interval containing s,
+	// so the plan does too: at 1w, --since 93d reaches back up to 99 days.
+	plan.Since = intervalStart(time.Unix(since, 0), plan.Interval)
 	// boundedByNow: the range ends at now, either because --until was not
 	// given or because it lay in the future; the error then talks about now,
 	// not about an --until the user never saw.
@@ -108,18 +130,26 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 	return plan, nil
 }
 
-// Windows splits the range into consecutive windows of at most plan.Window.
-// Each window's Until is the next window's Since: the API includes the
-// interval containing s and only intervals that end by u, so consecutive
-// windows neither overlap nor leave gaps.
+// Windows splits the range into consecutive windows the API accepts: from the
+// start of the interval containing s to the start of the one containing u is
+// at most plan.Window. Inner bounds are interval starts, and each window's
+// Until is the next window's Since: the API includes the interval containing s
+// and only intervals that end by u, so consecutive windows neither overlap nor
+// leave gaps.
 func (plan BulkPlan) Windows() []Window {
 	var windows []Window
-	for since := plan.Since; since.Before(plan.Until); since = since.Add(plan.Window) {
-		until := since.Add(plan.Window)
-		if until.After(plan.Until) {
-			until = plan.Until
+	for since := plan.Since; since.Before(plan.Until); {
+		limit := since.Add(plan.Window)
+		until := plan.Until
+		if intervalStart(until, plan.Interval).After(limit) {
+			until = intervalStart(limit, plan.Interval)
+			if !until.After(since) {
+				// A window shorter than one interval: no bound to round to.
+				until = limit
+			}
 		}
 		windows = append(windows, Window{since, until})
+		since = until
 	}
 	return windows
 }
