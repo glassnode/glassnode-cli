@@ -326,6 +326,24 @@ func TestPrintTable_MetricMetadataWithOptionalFields(t *testing.T) {
 	}
 }
 
+func TestPrintTable_MetricMetadataParametersSorted(t *testing.T) {
+	meta := &api.MetricMetadata{
+		Path:       "/market/price_usd_close",
+		Parameters: map[string][]string{"i": {"24h"}, "c": {"usd"}, "a": {"BTC"}, "f": {"json"}, "e": {"binance"}},
+	}
+	want := "Parameters:\n  a: BTC\n  c: usd\n  e: binance\n  f: json\n  i: 24h\n"
+	// Map iteration order varies between runs; repeat so an unsorted loop fails.
+	for range 20 {
+		var buf bytes.Buffer
+		if err := PrintTable(&buf, meta, ""); err != nil {
+			t.Fatalf("PrintTable: %v", err)
+		}
+		if !strings.HasSuffix(buf.String(), want) {
+			t.Fatalf("parameters not sorted:\n%s", buf.String())
+		}
+	}
+}
+
 func TestPrintCSV_NumbersArePlainDecimal(t *testing.T) {
 	var buf bytes.Buffer
 	data := []api.DataPoint{{T: 1, V: 1738241421021.0708}, {T: 2, V: 0.000001}}

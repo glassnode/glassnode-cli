@@ -339,15 +339,15 @@ func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
 	}
 	if len(m.Parameters) > 0 {
 		fmt.Fprintln(&b, "Parameters:")
-		for k, vals := range m.Parameters {
-			fmt.Fprintf(&b, "  %s: %s\n", k, strings.Join(vals, ", "))
+		for _, k := range sortedKeys(m.Parameters) {
+			fmt.Fprintf(&b, "  %s: %s\n", k, strings.Join(m.Parameters[k], ", "))
 		}
 	}
 	_, err := io.WriteString(w, b.String())
 	return err
 }
 
-func sortedKeys(m map[string]interface{}) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
