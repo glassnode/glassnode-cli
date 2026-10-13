@@ -20,7 +20,7 @@ func init() {
 	rootCmd.Version = "dev"
 	rootCmd.PersistentFlags().String("api-key", "", "API key override")
 	rootCmd.PersistentFlags().StringP("output", "o", "json", "output format: json, csv, table")
-	rootCmd.PersistentFlags().Bool("dry-run", false, "print the request URL without executing")
+	rootCmd.PersistentFlags().Bool("dry-run", false, "print the endpoint and parameters of the request without sending it (the SDK adds f=json to metric requests and validates parameters only when sending)")
 	rootCmd.PersistentFlags().String("timestamp-format", "humanized", "timestamp format: unix, humanized, or Go layout (e.g. 2006-01-02 15:04:05); applies to table/csv output")
 	rootCmd.SetVersionTemplate("gn version {{.Version}}\n")
 

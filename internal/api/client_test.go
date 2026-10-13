@@ -3,14 +3,18 @@ package api
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	glassnode "github.com/glassnode/glassnode-api-go-client"
 	"github.com/glassnode/glassnode-cli/internal/config"
 	"github.com/glassnode/glassnode-cli/internal/oauth"
 	"github.com/glassnode/glassnode-cli/internal/testhelper"
@@ -172,12 +176,13 @@ func TestResolveAuth_RefreshesExpiredAccessToken(t *testing.T) {
 	})
 }
 
-func TestDo_SendsCorrectURL(t *testing.T) {
-	var capturedURL string
+func TestRequest_SendsCorrectURL(t *testing.T) {
+	var capturedURL, capturedKey string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedURL = r.URL.String()
+		capturedKey = r.Header.Get("X-Api-Key")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("[]"))
 	}))
 	defer server.Close()
 
@@ -185,25 +190,25 @@ func TestDo_SendsCorrectURL(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.Do(context.Background(), "GET", "/v1/test", map[string]string{"a": "b"})
+	_, err := client.GetMetric(context.Background(), "/test", map[string]string{"a": "b"})
 	if err != nil {
-		t.Fatalf("Do: %v", err)
+		t.Fatalf("GetMetric: %v", err)
 	}
-	if !strings.Contains(capturedURL, "api_key=my-api-key") {
-		t.Errorf("URL %q missing api_key param", capturedURL)
+	if capturedKey != "my-api-key" || strings.Contains(capturedURL, "api_key") {
+		t.Errorf("URL %q header %q: the key must travel in X-Api-Key only", capturedURL, capturedKey)
 	}
 	if !strings.Contains(capturedURL, "a=b") {
 		t.Errorf("URL %q missing a=b param", capturedURL)
 	}
 }
 
-func TestDo_SendsBearerAuthorization(t *testing.T) {
+func TestRequest_SendsBearerAuthorization(t *testing.T) {
 	var authHdr, capturedURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHdr = r.Header.Get("Authorization")
 		capturedURL = r.URL.String()
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("[]"))
 	}))
 	defer server.Close()
 
@@ -211,9 +216,9 @@ func TestDo_SendsBearerAuthorization(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.Do(context.Background(), "GET", "/v1/test", map[string]string{"a": "b"})
+	_, err := client.GetMetric(context.Background(), "/test", map[string]string{"a": "b"})
 	if err != nil {
-		t.Fatalf("Do: %v", err)
+		t.Fatalf("GetMetric: %v", err)
 	}
 	if authHdr != "Bearer secret-token" {
 		t.Errorf("Authorization header %q, want Bearer secret-token", authHdr)
@@ -223,7 +228,7 @@ func TestDo_SendsBearerAuthorization(t *testing.T) {
 	}
 }
 
-func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
+func TestRequest_401TriggersRefreshAndRetry(t *testing.T) {
 	withTempHome(t, func() {
 		var mu sync.Mutex
 		var authHdrs []string
@@ -240,7 +245,7 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"ok":true}`))
+			_, _ = w.Write([]byte(`[{"t":1,"v":1}]`))
 		}))
 		defer api.Close()
 
@@ -264,12 +269,12 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 		client.baseURL = api.URL
 		client.httpClient = api.Client()
 
-		body, err := client.Do(context.Background(), "GET", "/v1/anything", nil)
+		points, err := client.GetMetric(context.Background(), "/anything", nil)
 		if err != nil {
-			t.Fatalf("Do: %v", err)
+			t.Fatalf("GetMetric: %v", err)
 		}
-		if !strings.Contains(string(body), "ok") {
-			t.Errorf("body %q, want contents including 'ok'", string(body))
+		if len(points) != 1 {
+			t.Errorf("points = %v, want the retried response", points)
 		}
 		if len(authHdrs) != 2 {
 			t.Fatalf("expected 2 API attempts, got %d", len(authHdrs))
@@ -277,10 +282,16 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 		if authHdrs[0] != "Bearer stale" || authHdrs[1] != "Bearer fresh" {
 			t.Errorf("auth headers %v", authHdrs)
 		}
+		if _, err := client.GetMetric(context.Background(), "/anything", nil); err != nil {
+			t.Fatal(err)
+		}
+		if len(authHdrs) != 3 || authHdrs[2] != "Bearer fresh" {
+			t.Errorf("refreshed token was not reused: %v", authHdrs)
+		}
 	})
 }
 
-func TestDo_401WithAPIKey_NoRetry(t *testing.T) {
+func TestRequest_401WithAPIKey_NoRetry(t *testing.T) {
 	// When using an API key (not a bearer), a 401 must NOT trigger a refresh attempt; we just
 	// surface the error. This guards against silently attempting OAuth refreshes for users who
 	// never ran gn login.
@@ -300,7 +311,7 @@ func TestDo_401WithAPIKey_NoRetry(t *testing.T) {
 		client.baseURL = server.URL
 		client.httpClient = server.Client()
 
-		_, err := client.Do(context.Background(), "GET", "/v1/x", nil)
+		_, err := client.GetMetric(context.Background(), "/x", nil)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -313,7 +324,7 @@ func TestDo_401WithAPIKey_NoRetry(t *testing.T) {
 	})
 }
 
-func TestDo_Non2xxReturnsError(t *testing.T) {
+func TestRequest_Non2xxReturnsError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("server error"))
@@ -324,18 +335,18 @@ func TestDo_Non2xxReturnsError(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.Do(context.Background(), "GET", "/v1/test", nil)
+	_, err := client.GetMetric(context.Background(), "/test", nil)
 	if err == nil {
 		t.Error("expected error for 500 status")
 	}
 }
 
-func TestDoWithRepeatedParams(t *testing.T) {
+func TestRequest_RepeatedParams(t *testing.T) {
 	var capturedURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedURL = r.URL.String()
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{}"))
+		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
 	defer server.Close()
 
@@ -344,9 +355,9 @@ func TestDoWithRepeatedParams(t *testing.T) {
 	client.httpClient = server.Client()
 
 	repeated := map[string][]string{"a": {"x", "y"}}
-	_, err := client.DoWithRepeatedParams(context.Background(), "GET", "/v1/test", nil, repeated)
+	_, err := client.GetMetricBulk(context.Background(), "/test", map[string]string{"s": "1"}, repeated)
 	if err != nil {
-		t.Fatalf("DoWithRepeatedParams: %v", err)
+		t.Fatalf("GetMetricBulk: %v", err)
 	}
 	if !strings.Contains(capturedURL, "a=x") || !strings.Contains(capturedURL, "a=y") {
 		t.Errorf("URL %q should contain a=x and a=y", capturedURL)
@@ -360,8 +371,8 @@ func TestBuildURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildURL: %v", err)
 	}
-	if !strings.Contains(got, "api_key=test-key") {
-		t.Errorf("URL %q missing api_key", got)
+	if strings.Contains(got, "api_key") || strings.Contains(got, "test-key") {
+		t.Errorf("URL %q must not contain the API key", got)
 	}
 	if !strings.Contains(got, "p=v") {
 		t.Errorf("URL %q missing p=v", got)
@@ -371,21 +382,18 @@ func TestBuildURL(t *testing.T) {
 	}
 }
 
-func TestRedactAPIKeyFromURL(t *testing.T) {
-	raw := "https://api.example.com/v1/path?api_key=secret123&a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
-	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
+func TestBuildURL_BaseURLAsTheSDKSeesIt(t *testing.T) {
+	client := NewClient("test-key", "")
+	client.baseURL = "https://api.example.com/"
+	got, err := client.BuildURL("/v1/path", nil, nil)
+	if err != nil || got != "https://api.example.com/v1/path" {
+		t.Errorf("trailing slash: got %q, %v", got, err)
 	}
-	if strings.Contains(redacted, "secret123") {
-		t.Errorf("redacted URL should not contain secret: %q", redacted)
-	}
-	// Placeholder may be URL-encoded as %2A%2A%2A
-	if !strings.Contains(redacted, "api_key=***") && !strings.Contains(redacted, "api_key=%2A%2A%2A") {
-		t.Errorf("redacted URL should contain api_key redaction: %q", redacted)
-	}
-	if !strings.Contains(redacted, "a=b") {
-		t.Errorf("redacted URL should preserve other params: %q", redacted)
+	bad := NewClient("test-key", "")
+	bad.baseURL = "api.example.com"
+	var inputErr *glassnode.InputError
+	if _, err := bad.BuildURL("/v1/path", nil, nil); !errors.As(err, &inputErr) {
+		t.Errorf("a base URL the SDK rejects must fail the dry run too, got %v", err)
 	}
 }
 
@@ -566,8 +574,8 @@ func TestGetMetric(t *testing.T) {
 	if points[0].T != 1230940800 {
 		t.Errorf("got T %d, want 1230940800", points[0].T)
 	}
-	if points[0].V != 2.4755000000000003 {
-		t.Errorf("got V %v, want 2.4755000000000003", points[0].V)
+	if points[0].V != json.Number("2.4755000000000003") {
+		t.Errorf("got V %v, want the API's number 2.4755000000000003 unchanged", points[0].V)
 	}
 }
 
@@ -582,7 +590,7 @@ func TestGetMetricBulk(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	resp, err := client.GetMetricBulk(context.Background(), "/market/price_usd_close", nil, nil)
+	resp, err := client.GetMetricBulk(context.Background(), "/market/price_usd_close", map[string]string{"s": "1770076800"}, nil)
 	if err != nil {
 		t.Fatalf("GetMetricBulk: %v", err)
 	}
@@ -598,7 +606,7 @@ func TestGetMetricBulk(t *testing.T) {
 	if resp.Data[0].Bulk[0]["a"] != "BTC" {
 		t.Errorf("got a=%v", resp.Data[0].Bulk[0]["a"])
 	}
-	if resp.Data[0].Bulk[0]["v"] != 1513125006987.5164 {
+	if resp.Data[0].Bulk[0]["v"] != json.Number("1513125006987.5164") {
 		t.Errorf("got v=%v", resp.Data[0].Bulk[0]["v"])
 	}
 }
@@ -667,7 +675,7 @@ func TestGetMetricBulk_InvalidJSONReturnsError(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.GetMetricBulk(context.Background(), "/market/price", nil, nil)
+	_, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "1"}, nil)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
@@ -746,7 +754,7 @@ func TestGetMetricBulk_EmptyData(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	resp, err := client.GetMetricBulk(context.Background(), "/market/price", nil, nil)
+	resp, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "1"}, nil)
 	if err != nil {
 		t.Fatalf("GetMetricBulk: %v", err)
 	}
@@ -757,18 +765,18 @@ func TestGetMetricBulk_EmptyData(t *testing.T) {
 
 // 4xx with body (point 7)
 
-func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
+func TestRequest_4xxReturnsErrorWithBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":"Invalid API key"}`))
 	}))
 	defer server.Close()
 
-	client := NewClient("key", "")
+	client := NewClient("test-api-secret", "")
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.Do(context.Background(), "GET", "/v1/test", nil)
+	_, err := client.GetMetric(context.Background(), "/test", nil)
 	if err == nil {
 		t.Fatal("expected error for 401 status")
 	}
@@ -780,36 +788,113 @@ func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
 	}
 }
 
-// RedactAPIKeyFromURL edge cases (point 7)
+func TestGetMetricBulk_KeepsAllSelectors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"t":1,"bulk":[
+			{"a":"BTC","e":"binance","v":1},
+			{"a":"ETH","category":"more_10y","v":null}]}]}`))
+	}))
+	defer server.Close()
 
-func TestRedactAPIKeyFromURL_NoAPIKeyParam(t *testing.T) {
-	raw := "https://api.example.com/v1/path?a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
+	client := NewClient("key", "")
+	client.baseURL = server.URL
+	client.httpClient = server.Client()
+
+	resp, err := client.GetMetricBulk(context.Background(), "/distribution/balance_exchanges", map[string]string{"s": "1"}, nil)
 	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
+		t.Fatalf("GetMetricBulk: %v", err)
 	}
-	if redacted != raw {
-		t.Errorf("URL without api_key should be unchanged: got %q", redacted)
+	rows := resp.Data[0].Bulk
+	if rows[0]["e"] != "binance" || rows[0]["a"] != "BTC" || rows[0]["v"] != json.Number("1") {
+		t.Errorf("exchange selector lost: %v", rows[0])
+	}
+	if rows[1]["category"] != "more_10y" || rows[1]["v"] != nil {
+		t.Errorf("category selector lost: %v", rows[1])
 	}
 }
 
-func TestRedactAPIKeyFromURL_EmptyAPIKey(t *testing.T) {
-	raw := "https://api.example.com/v1/path?api_key=&a=b"
-	redacted, err := RedactAPIKeyFromURL(raw)
+// Selectors reach the request as given; the SDK validates them, so a
+// malformed s is rejected before anything is sent.
+func TestGetMetric_SelectorsReachTheRequest(t *testing.T) {
+	var query url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+	client := NewClient("key", "")
+	client.baseURL = server.URL
+	client.httpClient = server.Client()
+
+	_, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "100", "u": "200", "i": "24h", "c": "USD", "network": "eth"}, map[string][]string{"a": {"BTC", "ETH"}, "e": {"binance", "coinbase"}})
 	if err != nil {
-		t.Fatalf("RedactAPIKeyFromURL: %v", err)
+		t.Fatal(err)
 	}
-	if !strings.Contains(redacted, "a=b") {
-		t.Errorf("should preserve other params: %q", redacted)
+	if query.Get("s") != "100" || query.Get("u") != "200" || query.Get("i") != "24h" || query.Get("c") != "USD" || query.Get("network") != "eth" || len(query["a"]) != 2 || len(query["e"]) != 2 {
+		t.Errorf("query: %v", query)
 	}
-	if !strings.Contains(redacted, "api_key=") {
-		t.Errorf("should still have api_key param: %q", redacted)
+	calls := 0
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ })
+	var inputErr *glassnode.InputError
+	if _, err := client.GetMetric(context.Background(), "/market/price", map[string]string{"s": "yesterday"}); !errors.As(err, &inputErr) || calls != 0 {
+		t.Errorf("err = %v, calls = %d; want an InputError and no request", err, calls)
 	}
 }
 
-func TestRedactAPIKeyFromURL_InvalidURL(t *testing.T) {
-	_, err := RedactAPIKeyFromURL("://invalid")
-	if err == nil {
-		t.Error("expected error for invalid URL")
+func TestGetMetricBulk_PassesEntriesThrough(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/metrics/market/price/bulk" {
+			t.Errorf("path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"t":1,"bulk":[{"a":"BTC","period":7,"v":12345678901234567890},{"a":"ETH","v":{"o":1,"c":2}}]}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("key", "")
+	client.baseURL = server.URL
+	client.httpClient = server.Client()
+
+	resp, err := client.GetMetricBulk(context.Background(), "/market/price", map[string]string{"s": "1"}, nil)
+	if err != nil {
+		t.Fatalf("GetMetricBulk: %v", err)
 	}
+	encoded, err := json.Marshal(resp.Data[0].Bulk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(encoded), `[{"a":"BTC","period":7,"v":12345678901234567890},{"a":"ETH","v":{"c":2,"o":1}}]`; got != want {
+		t.Errorf("bulk entries\n got %s\nwant %s", got, want)
+	}
+}
+
+// A failed refresh after a 401 surfaces its cause in the returned error.
+func TestRequest_401RefreshFailureReportsCause(t *testing.T) {
+	withTempHome(t, func() {
+		api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+		}))
+		defer api.Close()
+		idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"refresh token revoked"}`))
+		}))
+		defer idp.Close()
+		restore := oauth.OverrideDefaultsForTesting(idp.URL, "https://api.example", "cid")
+		defer restore()
+		if err := config.SaveOAuthSession(config.OAuthSession{AccessToken: "stale", RefreshToken: "rt1", ExpiresAt: time.Now().UTC().Add(time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+
+		client := NewClient("", "stale")
+		client.baseURL = api.URL
+		client.httpClient = api.Client()
+
+		_, err := client.GetMetric(context.Background(), "/anything", nil)
+		var authErr *glassnode.AuthError
+		if !errors.As(err, &authErr) || !strings.Contains(err.Error(), "invalid_grant") || !strings.Contains(err.Error(), "refresh token revoked") {
+			t.Fatalf("err = %v, want an AuthError carrying the IdP's cause", err)
+		}
+	})
 }

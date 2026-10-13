@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/glassnode/glassnode-cli/internal/api"
 	"github.com/glassnode/glassnode-cli/internal/output"
@@ -12,6 +12,9 @@ var metricListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List available metrics",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("format") {
+			return errors.New(formatRemoved)
+		}
 		apiKeyFlag, _ := cmd.Flags().GetString("api-key")
 		apiKey, bearer, err := api.RequireAuth(cmd.Context(), apiKeyFlag)
 		if err != nil {
@@ -27,8 +30,7 @@ var metricListCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			redacted, _ := api.RedactAPIKeyFromURL(u)
-			fmt.Println(redacted)
+			printDryRun(cmd, client, u)
 			return nil
 		}
 
@@ -64,9 +66,6 @@ func metricListParamsFromFlags(cmd *cobra.Command) (map[string]string, map[strin
 	if v, _ := cmd.Flags().GetString("exchange"); v != "" {
 		params["e"] = v
 	}
-	if v, _ := cmd.Flags().GetString("format"); v != "" {
-		params["f"] = v
-	}
 	if v, _ := cmd.Flags().GetString("interval"); v != "" {
 		params["i"] = v
 	}
@@ -95,12 +94,18 @@ func metricListParamsFromFlags(cmd *cobra.Command) (map[string]string, map[strin
 	return params, repeatedParams
 }
 
+// formatRemoved explains the removed --format filter to scripts that still
+// pass it; the hidden flag and this message go away in the next release.
+const formatRemoved = `--format was removed: the API's response-format filter on the metric list returns no metrics for any value; ` +
+	`for metric data in CSV use "gn metric get <path> ... -o csv"`
+
 func init() {
+	metricListCmd.Flags().StringP("format", "f", "", "removed")
+	_ = metricListCmd.Flags().MarkHidden("format")
 	metricListCmd.Flags().StringP("asset", "a", "", "filter by asset (single)")
 	metricListCmd.Flags().StringArray("assets", nil, "filter by assets (multiple, e.g. --assets BTC --assets ETH)")
 	metricListCmd.Flags().StringP("currency", "c", "", "filter by currency (e.g. native, usd)")
 	metricListCmd.Flags().StringP("exchange", "e", "", "filter by exchange (e.g. binance, coinbase)")
-	metricListCmd.Flags().StringP("format", "f", "", "filter by response format (e.g. json, csv)")
 	metricListCmd.Flags().StringP("interval", "i", "", "filter by time interval (e.g. 1h, 24h)")
 	metricListCmd.Flags().String("from-exchange", "", "source exchange for inter-exchange metrics")
 	metricListCmd.Flags().String("to-exchange", "", "destination exchange for inter-exchange metrics")

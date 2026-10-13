@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -51,8 +50,7 @@ var assetListCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			redacted, _ := api.RedactAPIKeyFromURL(u)
-			fmt.Println(redacted)
+			printDryRun(cmd, client, u)
 			return nil
 		}
 

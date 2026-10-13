@@ -85,3 +85,14 @@ func TestParse(t *testing.T) {
 		}
 	})
 }
+
+func TestParseAt(t *testing.T) {
+	now := time.Date(2026, 10, 8, 12, 0, 0, 500, time.UTC)
+	got, err := ParseAt("31d", now)
+	if err != nil || got != now.Add(-31*24*time.Hour).Unix() {
+		t.Fatalf("ParseAt(31d) = %d, %v; want exactly 31 days before now", got, err)
+	}
+	if got, _ := ParseAt("2024-01-01", now); got != 1704067200 {
+		t.Errorf("absolute dates ignore now: %d", got)
+	}
+}
