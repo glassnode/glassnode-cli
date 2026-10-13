@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -171,9 +172,15 @@ func newTestClient(server *httptest.Server) *Client {
 func TestGetMetricBulkSplit(t *testing.T) {
 	plan := BulkPlan{Since: planSince, Until: planSince.Add(70 * day), Interval: "24h", Window: 31 * day}
 	server, calls, _ := bulkServer(t, 31*day, 0)
+	var progress strings.Builder
+	stderr = &progress
+	t.Cleanup(func() { stderr = os.Stderr })
 	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := progress.String(); !strings.Contains(got, "window 1/3 2024-01-01..2024-02-01") || !strings.Contains(got, "window 3/3 ") {
+		t.Errorf("progress:\n%s", got)
 	}
 	if calls.Load() != 3 || len(resp.Data) != 70 {
 		t.Fatalf("calls=%d points=%d, want 3 and 70", calls.Load(), len(resp.Data))
@@ -267,6 +274,7 @@ func TestIsRangeTooLarge(t *testing.T) {
 		{400, "too large time range (155664h0m0s) requested (maximum allowed is 744h0m0s)", true},
 		{400, "Requested Time Range is too large", true},
 		{400, "parameter a=NOPE is invalid", false},
+		{400, "invalid time range: s must be before u", false},
 		{403, "time range not in your plan", false},
 	} {
 		if got := IsRangeTooLarge(&glassnode.APIError{StatusCode: tt.status, Detail: tt.detail}); got != tt.want {

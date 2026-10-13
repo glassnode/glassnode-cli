@@ -195,6 +195,9 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 	for since.Before(plan.Until) {
 		windows := BulkPlan{Since: since, Until: plan.Until, Interval: plan.Interval, Window: plan.Window}.Windows()
 		w := windows[0]
+		// One line per window: each goes through the SDK's retries and may
+		// wait on a rate limit, so a long split fetch should not fall silent.
+		fmt.Fprintf(stderr, "window %d/%d %s..%s\n", fetched+1, fetched+len(windows), formatBound(w.Since), formatBound(w.Until))
 		resp, err := c.GetMetricBulk(ctx, path, WindowParams(params, w), repeated)
 		if err != nil {
 			// Halve the range the API actually rejected: near the end of the
@@ -228,13 +231,14 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 	return merged, nil
 }
 
-// IsRangeTooLarge reports the API's rejection of a window as too long. Other
-// 400s (an invalid asset, an unsupported parameter combination) are not
-// treated as a reason to halve: that would spend requests and replace the
-// API's message with one about window size.
+// IsRangeTooLarge reports the API's rejection of a window as too long ("too
+// large time range (...) requested"). Other 400s, including other complaints
+// about the range, are not treated as a reason to halve or to suggest --split:
+// that would spend requests and replace the API's message with one about
+// window size.
 func IsRangeTooLarge(err error) bool {
 	var apiErr *glassnode.APIError
-	return errors.As(err, &apiErr) && apiErr.StatusCode == 400 && strings.Contains(strings.ToLower(apiErr.Detail), "time range")
+	return errors.As(err, &apiErr) && apiErr.StatusCode == 400 && strings.Contains(strings.ToLower(apiErr.Detail), "too large")
 }
 
 // formatBound shows a window bound as a date when it is at midnight UTC and
