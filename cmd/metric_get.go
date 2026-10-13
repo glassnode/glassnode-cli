@@ -85,20 +85,23 @@ var metricGetCmd = &cobra.Command{
 			if len(windows) > 1 && !split {
 				return plan.RangeError()
 			}
-			if len(windows) > 1 {
-				fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe())
-			}
-
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 			if dryRun {
+				// One URL per window and the header note once; nothing is
+				// fetched, so the split summary does not apply.
+				urls := make([]string, 0, len(windows))
 				for _, w := range windows {
 					u, err := client.BuildURL("/v1/metrics"+path+"/bulk", api.WindowParams(params, w), repeatedParams)
 					if err != nil {
 						return err
 					}
-					printDryRun(cmd, client, u)
+					urls = append(urls, u)
 				}
+				printDryRun(cmd, client, urls...)
 				return nil
+			}
+			if len(windows) > 1 {
+				fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe())
 			}
 
 			// --split is the only consent to more than one request: without it
@@ -107,7 +110,7 @@ var metricGetCmd = &cobra.Command{
 			// reported rather than answered with halved windows.
 			var resp *api.BulkResponse
 			if split {
-				resp, err = client.GetMetricBulkSplit(cmd.Context(), path, params, repeatedParams, plan)
+				resp, err = client.GetMetricBulkSplit(cmd.Context(), path, params, repeatedParams, plan, cmd.ErrOrStderr())
 			} else {
 				resp, err = client.GetMetricBulk(cmd.Context(), path, api.WindowParams(params, windows[0]), repeatedParams)
 				if api.IsRangeTooLarge(err) {

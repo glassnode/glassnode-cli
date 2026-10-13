@@ -238,3 +238,21 @@ func TestMetricGet_SplitOnBaseMetricIsIgnoredWithANote(t *testing.T) {
 		t.Errorf("stderr=%q stdout=%q, want the note on stderr and a plain URL on stdout", stderr, stdout)
 	}
 }
+
+// A bulk dry run prints one URL per window, the header note once, and no
+// split summary, since nothing is fetched.
+func TestMetricGet_BulkDryRun_NoteOnce(t *testing.T) {
+	stdout, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir()},
+		"metric", "get", "/market/price_usd_close/bulk", "--api-key", "k", "--asset", "BTC",
+		"--since", "2024-01-01", "--until", "2024-03-01", "--split", "--dry-run",
+	)
+	if err != nil {
+		t.Fatalf("run CLI: %v\nstderr: %s", err, stderr)
+	}
+	if strings.Count(stdout, "/v1/metrics/market/price_usd_close/bulk?") != 2 {
+		t.Errorf("stdout should hold two window URLs:\n%s", stdout)
+	}
+	if strings.Count(stderr, "# credentials") != 1 || strings.Contains(stderr, "splitting") {
+		t.Errorf("stderr should carry the note once and no split summary:\n%s", stderr)
+	}
+}

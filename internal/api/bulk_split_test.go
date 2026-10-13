@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -28,6 +27,14 @@ func TestPlanBulk(t *testing.T) {
 		_, err := PlanBulk(map[string]string{}, planNow)
 		if err == nil || !strings.Contains(err.Error(), "--since") || !strings.Contains(err.Error(), "31 days") || !strings.Contains(err.Error(), "--split fetches") {
 			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("an unknown interval is refused before planning", func(t *testing.T) {
+		for _, interval := range []string{"1d", "24H", "weekly"} {
+			_, err := PlanBulk(map[string]string{"s": unix(planSince), "i": interval}, planNow)
+			if err == nil || !strings.Contains(err.Error(), "unknown --interval") || !strings.Contains(err.Error(), "1month") {
+				t.Errorf("%q: err = %v", interval, err)
+			}
 		}
 	})
 	t.Run("defaults and window by resolution", func(t *testing.T) {
@@ -95,7 +102,7 @@ func TestPlanBulk(t *testing.T) {
 func TestGetMetricBulkSplitHalvesTheRejectedRange(t *testing.T) {
 	plan := BulkPlan{Since: planSince, Until: planSince.Add(12 * day), Interval: "24h", Window: 31 * day}
 	server, calls, windows := bulkServer(t, 10*day, 0)
-	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,9 +180,7 @@ func TestGetMetricBulkSplit(t *testing.T) {
 	plan := BulkPlan{Since: planSince, Until: planSince.Add(70 * day), Interval: "24h", Window: 31 * day}
 	server, calls, _ := bulkServer(t, 31*day, 0)
 	var progress strings.Builder
-	stderr = &progress
-	t.Cleanup(func() { stderr = os.Stderr })
-	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, &progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +201,7 @@ func TestGetMetricBulkSplitShrinksWindow(t *testing.T) {
 	plan := BulkPlan{Since: planSince, Until: planSince.Add(31 * day), Interval: "24h", Window: 31 * day}
 	// The server allows only 10 days: 31 -> 15.5 -> 7.75 days, two shrinks.
 	server, calls, windows := bulkServer(t, 10*day, 0)
-	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +215,7 @@ func TestGetMetricBulkSplitShrinksWindow(t *testing.T) {
 
 	// A limit below what three halvings reach is an error.
 	tiny, _, _ := bulkServer(t, 2*day, 0)
-	if _, err := newTestClient(tiny).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan); err == nil || !strings.Contains(err.Error(), "too large time range") {
+	if _, err := newTestClient(tiny).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, nil); err == nil || !strings.Contains(err.Error(), "too large time range") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -218,11 +223,11 @@ func TestGetMetricBulkSplitShrinksWindow(t *testing.T) {
 func TestGetMetricBulkSplitAbortsOnFailure(t *testing.T) {
 	plan := BulkPlan{Since: planSince, Until: planSince.Add(70 * day), Interval: "24h", Window: 31 * day}
 	server, calls, _ := bulkServer(t, 31*day, 2)
-	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, nil)
 	if err == nil || resp != nil {
 		t.Fatalf("expected an error and no data, got %v %v", resp, err)
 	}
-	for _, want := range []string{"window 2 of about 3", "2024-02-01..2024-03-03", "metric not in your plan", "--since 2024-02-01"} {
+	for _, want := range []string{"window 2 of about 3", "2024-02-01..2024-03-03", "metric not in your plan", "no data was written (1 windows had succeeded), retry the command"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
 		}
@@ -256,7 +261,7 @@ func TestGetMetricBulkSplitKeepsLaterPointOnOverlap(t *testing.T) {
 		fmt.Fprintf(w, `{"data":[{"t":%d,"bulk":[{"a":"BTC","v":2},{"a":"ETH","v":3}]}]}`, boundary)
 	}))
 	t.Cleanup(server.Close)
-	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,11 +295,11 @@ func TestGetMetricBulkSplitErrorAfterHalving(t *testing.T) {
 	since := planSince.Add(6 * time.Hour)
 	plan := BulkPlan{Since: since, Until: since.Add(20 * day), Interval: "1h", Window: 10 * day}
 	server, _, _ := bulkServer(t, 5*day, 4) // call 1 too large; calls 2-3 succeed; call 4 fails
-	_, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
+	_, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, nil)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, want := range []string{"window 3 of about 4", "2024-01-11T06:00:00Z..2024-01-16T06:00:00Z", "--since 2024-01-11T06:00:00Z"} {
+	for _, want := range []string{"window 3 of about 4", "2024-01-11T06:00:00Z..2024-01-16T06:00:00Z", "retry the command"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
 		}
@@ -315,9 +320,9 @@ func TestFormatBound(t *testing.T) {
 func TestGetMetricBulkSplitDoesNotHalveBelowAnInterval(t *testing.T) {
 	plan := BulkPlan{Since: planSince, Until: planSince.Add(93 * day), Interval: "1month", Window: 93 * day}
 	server, calls, windows := bulkServer(t, 20*day, 0) // even one month is rejected
-	_, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan)
-	if err == nil || !strings.Contains(err.Error(), "time range") {
-		t.Fatalf("err = %v, want the API's too-large error once halving is exhausted", err)
+	_, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, nil)
+	if err == nil || !strings.Contains(err.Error(), "time range") || !strings.Contains(err.Error(), "coarser --interval") || strings.Contains(err.Error(), "retry") {
+		t.Fatalf("err = %v, want the API's too-large error and a remedy other than retrying", err)
 	}
 	if calls.Load() != 2 || !(*windows)[1].Until.Equal(time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("calls=%d windows=%v, want 93d then January and no shorter window", calls.Load(), *windows)

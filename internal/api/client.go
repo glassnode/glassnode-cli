@@ -56,14 +56,15 @@ func (c *Client) sdk() (*glassnode.Client, error) {
 	return c.sdkClient, c.initErr
 }
 
-// AuthHeader names the header that carries the credential. The SDK sends the
-// API key in X-Api-Key rather than in the URL, so it stays out of proxy and
-// access logs; dry-run output therefore shows the URL without it.
+// AuthHeader describes the header that carries the credential, for the
+// dry-run note. The SDK sends the API key in X-Api-Key rather than in the
+// URL, so it stays out of proxy and access logs; dry-run output therefore
+// shows the URL without it.
 func (c *Client) AuthHeader() string {
 	if c.bearerToken != "" {
-		return "Authorization: Bearer"
+		return "Authorization header (Bearer scheme)"
 	}
-	return "X-Api-Key"
+	return "X-Api-Key header"
 }
 
 // sessionTokens hands the CLI's OAuth session token to the SDK and refreshes

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -61,6 +62,16 @@ func intervalStart(t time.Time, interval string) time.Time {
 	}
 }
 
+// knownInterval reports whether the API offers the resolution; the window
+// helpers fall back to 24h, so an unknown one must be refused before planning.
+func knownInterval(interval string) bool {
+	switch interval {
+	case "10m", "1h", "24h", "1w", "1month":
+		return true
+	}
+	return false
+}
+
 // BulkWindow returns the longest time range the API accepts in one bulk
 // request at the given resolution.
 func BulkWindow(interval string) time.Duration {
@@ -92,6 +103,9 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 	plan := BulkPlan{Interval: params["i"], Until: now.Truncate(time.Second)}
 	if plan.Interval == "" {
 		plan.Interval = defaultResolution
+	}
+	if !knownInterval(plan.Interval) {
+		return plan, fmt.Errorf("unknown --interval %q; bulk metrics accept 10m, 1h, 24h, 1w or 1month", plan.Interval)
 	}
 	plan.Window = BulkWindow(plan.Interval)
 	raw, ok := params["s"]
@@ -184,7 +198,10 @@ func WindowParams(params map[string]string, w Window) map[string]string {
 // points. If the API rejects a window as too large, the window is halved for
 // the rest of the range, up to maxWindowShrinks times. Any other failure
 // aborts the whole fetch: a partial result would look complete to a script.
-func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map[string]string, repeated map[string][]string, plan BulkPlan) (*BulkResponse, error) {
+func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map[string]string, repeated map[string][]string, plan BulkPlan, progress io.Writer) (*BulkResponse, error) {
+	if progress == nil {
+		progress = io.Discard
+	}
 	merged := &BulkResponse{}
 	// Adjacent windows share no timestamp (the API rounds s down and includes
 	// only intervals ending by u), so index is a guard: should a timestamp
@@ -197,7 +214,7 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 		w := windows[0]
 		// One line per window: each goes through the SDK's retries and may
 		// wait on a rate limit, so a long split fetch should not fall silent.
-		fmt.Fprintf(stderr, "window %d/%d %s..%s\n", fetched+1, fetched+len(windows), formatBound(w.Since), formatBound(w.Until))
+		fmt.Fprintf(progress, "window %d/%d %s..%s\n", fetched+1, fetched+len(windows), formatBound(w.Since), formatBound(w.Until))
 		resp, err := c.GetMetricBulk(ctx, path, WindowParams(params, w), repeated)
 		if err != nil {
 			// Halve the range the API actually rejected: near the end of the
@@ -210,9 +227,14 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 				plan.Window = halved
 				continue
 			}
+			// Nothing has been printed, so the whole command is what to retry.
 			// The total is an estimate: a halved window changes how many remain.
-			return nil, fmt.Errorf("window %d of about %d (%s..%s): %w; the fetch is aborted, retry it with --since %s",
-				fetched+1, fetched+len(windows), formatBound(w.Since), formatBound(w.Until), err, formatBound(w.Since))
+			remedy := "retry the command"
+			if IsRangeTooLarge(err) {
+				remedy = "shorten the range or use a coarser --interval"
+			}
+			return nil, fmt.Errorf("window %d of about %d (%s..%s): %w; the fetch is aborted and no data was written (%d windows had succeeded), %s",
+				fetched+1, fetched+len(windows), formatBound(w.Since), formatBound(w.Until), err, fetched, remedy)
 		}
 		fetched++
 		for _, point := range resp.Data {
