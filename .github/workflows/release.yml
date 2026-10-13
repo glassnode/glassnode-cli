@@ -20,7 +20,9 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.24'
+          # The newest patched toolchain for shipped binaries; go.mod's go line is the minimum
+          # that CI tests (setup-go would install exactly that patch release).
+          go-version: stable
 
       - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
