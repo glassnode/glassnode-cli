@@ -77,7 +77,7 @@ func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
 	raw, ok := params["s"]
 	if !ok {
 		return plan, fmt.Errorf("bulk metrics require --since (at most %s per request at %s; --split fetches a longer range in several requests)",
-			days(plan.Window), plan.Interval)
+			plan.WindowDays(), plan.Interval)
 	}
 	since, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
@@ -124,16 +124,19 @@ func (plan BulkPlan) Windows() []Window {
 	return windows
 }
 
+// WindowDays is the window's length as shown to the user, such as "31 days".
+func (plan BulkPlan) WindowDays() string { return days(plan.Window) }
+
 // RangeError explains why the range needs --split.
 func (plan BulkPlan) RangeError() error {
 	return fmt.Errorf("range %s..%s exceeds the API limit of %s per bulk request at %s; shorten it or add --split to fetch it in %d requests",
-		formatBound(plan.Since), formatBound(plan.Until), days(plan.Window), plan.Interval, len(plan.Windows()))
+		formatBound(plan.Since), formatBound(plan.Until), plan.WindowDays(), plan.Interval, len(plan.Windows()))
 }
 
 // Describe summarises the split for a warning to the user.
 func (plan BulkPlan) Describe() string {
 	return fmt.Sprintf("splitting %s..%s into %d requests of up to %s (%s); the result is assembled in memory",
-		formatBound(plan.Since), formatBound(plan.Until), len(plan.Windows()), days(plan.Window), plan.Interval)
+		formatBound(plan.Since), formatBound(plan.Until), len(plan.Windows()), plan.WindowDays(), plan.Interval)
 }
 
 // WindowParams returns params with s and u set to the window's bounds.

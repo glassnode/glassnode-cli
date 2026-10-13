@@ -175,13 +175,13 @@ func TestResolveAuth_RefreshesExpiredAccessToken(t *testing.T) {
 	})
 }
 
-func TestDo_SendsCorrectURL(t *testing.T) {
+func TestRequest_SendsCorrectURL(t *testing.T) {
 	var capturedURL, capturedKey string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedURL = r.URL.String()
 		capturedKey = r.Header.Get("X-Api-Key")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("[]"))
 	}))
 	defer server.Close()
 
@@ -189,9 +189,9 @@ func TestDo_SendsCorrectURL(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.Do(context.Background(), "GET", "/v1/test", map[string]string{"a": "b"})
+	_, err := client.GetMetric(context.Background(), "/test", map[string]string{"a": "b"})
 	if err != nil {
-		t.Fatalf("Do: %v", err)
+		t.Fatalf("GetMetric: %v", err)
 	}
 	if capturedKey != "my-api-key" || strings.Contains(capturedURL, "api_key") {
 		t.Errorf("URL %q header %q: the key must travel in X-Api-Key only", capturedURL, capturedKey)
@@ -201,13 +201,13 @@ func TestDo_SendsCorrectURL(t *testing.T) {
 	}
 }
 
-func TestDo_SendsBearerAuthorization(t *testing.T) {
+func TestRequest_SendsBearerAuthorization(t *testing.T) {
 	var authHdr, capturedURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHdr = r.Header.Get("Authorization")
 		capturedURL = r.URL.String()
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("[]"))
 	}))
 	defer server.Close()
 
@@ -215,9 +215,9 @@ func TestDo_SendsBearerAuthorization(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.Do(context.Background(), "GET", "/v1/test", map[string]string{"a": "b"})
+	_, err := client.GetMetric(context.Background(), "/test", map[string]string{"a": "b"})
 	if err != nil {
-		t.Fatalf("Do: %v", err)
+		t.Fatalf("GetMetric: %v", err)
 	}
 	if authHdr != "Bearer secret-token" {
 		t.Errorf("Authorization header %q, want Bearer secret-token", authHdr)
@@ -227,7 +227,7 @@ func TestDo_SendsBearerAuthorization(t *testing.T) {
 	}
 }
 
-func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
+func TestRequest_401TriggersRefreshAndRetry(t *testing.T) {
 	withTempHome(t, func() {
 		var mu sync.Mutex
 		var authHdrs []string
@@ -244,7 +244,7 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"ok":true}`))
+			_, _ = w.Write([]byte(`[{"t":1,"v":1}]`))
 		}))
 		defer api.Close()
 
@@ -268,12 +268,12 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 		client.baseURL = api.URL
 		client.httpClient = api.Client()
 
-		body, err := client.Do(context.Background(), "GET", "/v1/anything", nil)
+		points, err := client.GetMetric(context.Background(), "/anything", nil)
 		if err != nil {
-			t.Fatalf("Do: %v", err)
+			t.Fatalf("GetMetric: %v", err)
 		}
-		if !strings.Contains(string(body), "ok") {
-			t.Errorf("body %q, want contents including 'ok'", string(body))
+		if len(points) != 1 {
+			t.Errorf("points = %v, want the retried response", points)
 		}
 		if len(authHdrs) != 2 {
 			t.Fatalf("expected 2 API attempts, got %d", len(authHdrs))
@@ -281,7 +281,7 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 		if authHdrs[0] != "Bearer stale" || authHdrs[1] != "Bearer fresh" {
 			t.Errorf("auth headers %v", authHdrs)
 		}
-		if _, err := client.Do(context.Background(), "GET", "/v1/anything", nil); err != nil {
+		if _, err := client.GetMetric(context.Background(), "/anything", nil); err != nil {
 			t.Fatal(err)
 		}
 		if len(authHdrs) != 3 || authHdrs[2] != "Bearer fresh" {
@@ -290,7 +290,7 @@ func TestDo_401TriggersRefreshAndRetry(t *testing.T) {
 	})
 }
 
-func TestDo_401WithAPIKey_NoRetry(t *testing.T) {
+func TestRequest_401WithAPIKey_NoRetry(t *testing.T) {
 	// When using an API key (not a bearer), a 401 must NOT trigger a refresh attempt; we just
 	// surface the error. This guards against silently attempting OAuth refreshes for users who
 	// never ran gn login.
@@ -310,7 +310,7 @@ func TestDo_401WithAPIKey_NoRetry(t *testing.T) {
 		client.baseURL = server.URL
 		client.httpClient = server.Client()
 
-		_, err := client.Do(context.Background(), "GET", "/v1/x", nil)
+		_, err := client.GetMetric(context.Background(), "/x", nil)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -323,7 +323,7 @@ func TestDo_401WithAPIKey_NoRetry(t *testing.T) {
 	})
 }
 
-func TestDo_Non2xxReturnsError(t *testing.T) {
+func TestRequest_Non2xxReturnsError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("server error"))
@@ -334,18 +334,18 @@ func TestDo_Non2xxReturnsError(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.Do(context.Background(), "GET", "/v1/test", nil)
+	_, err := client.GetMetric(context.Background(), "/test", nil)
 	if err == nil {
 		t.Error("expected error for 500 status")
 	}
 }
 
-func TestDoWithRepeatedParams(t *testing.T) {
+func TestRequest_RepeatedParams(t *testing.T) {
 	var capturedURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedURL = r.URL.String()
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{}"))
+		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
 	defer server.Close()
 
@@ -354,9 +354,9 @@ func TestDoWithRepeatedParams(t *testing.T) {
 	client.httpClient = server.Client()
 
 	repeated := map[string][]string{"a": {"x", "y"}}
-	_, err := client.DoWithRepeatedParams(context.Background(), "GET", "/v1/test", nil, repeated)
+	_, err := client.GetMetricBulk(context.Background(), "/test", map[string]string{"s": "1"}, repeated)
 	if err != nil {
-		t.Fatalf("DoWithRepeatedParams: %v", err)
+		t.Fatalf("GetMetricBulk: %v", err)
 	}
 	if !strings.Contains(capturedURL, "a=x") || !strings.Contains(capturedURL, "a=y") {
 		t.Errorf("URL %q should contain a=x and a=y", capturedURL)
@@ -749,7 +749,7 @@ func TestGetMetricBulk_EmptyData(t *testing.T) {
 
 // 4xx with body (point 7)
 
-func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
+func TestRequest_4xxReturnsErrorWithBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":"Invalid API key"}`))
@@ -760,7 +760,7 @@ func TestDo_4xxReturnsErrorWithBody(t *testing.T) {
 	client.baseURL = server.URL
 	client.httpClient = server.Client()
 
-	_, err := client.Do(context.Background(), "GET", "/v1/test", nil)
+	_, err := client.GetMetric(context.Background(), "/test", nil)
 	if err == nil {
 		t.Fatal("expected error for 401 status")
 	}
@@ -841,7 +841,7 @@ func TestGetMetricBulk_PassesEntriesThrough(t *testing.T) {
 }
 
 // A failed refresh after a 401 surfaces its cause in the returned error.
-func TestDo_401RefreshFailureReportsCause(t *testing.T) {
+func TestRequest_401RefreshFailureReportsCause(t *testing.T) {
 	withTempHome(t, func() {
 		api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -863,7 +863,7 @@ func TestDo_401RefreshFailureReportsCause(t *testing.T) {
 		client.baseURL = api.URL
 		client.httpClient = api.Client()
 
-		_, err := client.Do(context.Background(), "GET", "/v1/anything", nil)
+		_, err := client.GetMetric(context.Background(), "/anything", nil)
 		var authErr *glassnode.AuthError
 		if !errors.As(err, &authErr) || !strings.Contains(err.Error(), "invalid_grant") || !strings.Contains(err.Error(), "refresh token revoked") {
 			t.Fatalf("err = %v, want an AuthError carrying the IdP's cause", err)

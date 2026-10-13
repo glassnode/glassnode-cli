@@ -110,8 +110,8 @@ var metricGetCmd = &cobra.Command{
 			} else {
 				resp, err = client.GetMetricBulk(cmd.Context(), path, params, repeatedParams)
 				if api.IsRangeTooLarge(err) {
-					err = fmt.Errorf("%w; the range is within the documented limit of %d days at %s, add --split to retry it in shorter windows",
-						err, int(plan.Window.Hours()/24), plan.Interval)
+					err = fmt.Errorf("%w; the range is within the documented limit of %s at %s, add --split to retry it in shorter windows",
+						err, plan.WindowDays(), plan.Interval)
 				}
 			}
 			if err != nil {

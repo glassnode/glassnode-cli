@@ -177,18 +177,3 @@ func RequireAPIKey(flagValue string) (string, error) {
 	}
 	return key, nil
 }
-
-func (c *Client) Do(ctx context.Context, method, path string, params map[string]string) ([]byte, error) {
-	return c.DoWithRepeatedParams(ctx, method, path, params, nil)
-}
-
-func (c *Client) DoWithRepeatedParams(ctx context.Context, method, path string, params map[string]string, repeated map[string][]string) ([]byte, error) {
-	if method != http.MethodGet {
-		return nil, fmt.Errorf("unsupported HTTP method %s", method)
-	}
-	client, err := c.sdk()
-	if err != nil {
-		return nil, err
-	}
-	return client.Raw(ctx, path, queryValues(params, repeated))
-}
