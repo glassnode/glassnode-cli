@@ -66,9 +66,10 @@ type Window struct{ Since, Until time.Time }
 
 // PlanBulk reads the s, u and i parameters of a bulk request. s is required
 // by the API; u defaults to now and is capped at now, since the API returns no
-// future points.
+// future points. now is truncated to seconds, the API's resolution, so that a
+// range ending now is never a fraction of a second over the window.
 func PlanBulk(params map[string]string, now time.Time) (BulkPlan, error) {
-	plan := BulkPlan{Interval: params["i"], Until: now}
+	plan := BulkPlan{Interval: params["i"], Until: now.Truncate(time.Second)}
 	if plan.Interval == "" {
 		plan.Interval = defaultResolution
 	}

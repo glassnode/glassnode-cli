@@ -41,6 +41,15 @@ func TestPlanBulk(t *testing.T) {
 			}
 		}
 	})
+	t.Run("a range exactly one window long is one request", func(t *testing.T) {
+		for interval, window := range map[string]time.Duration{"24h": 31 * day, "1h": 10 * day, "1month": 93 * day} {
+			now := planNow.Add(123456789 * time.Nanosecond) // a clock read after --since was parsed
+			plan, err := PlanBulk(map[string]string{"s": unix(planNow.Add(-window)), "i": interval}, now)
+			if err != nil || len(plan.Windows()) != 1 || !plan.Until.Equal(planNow) {
+				t.Errorf("%s: windows=%v err=%v, want one window ending at %v", interval, plan.Windows(), err, planNow)
+			}
+		}
+	})
 	t.Run("until in the future is capped at now", func(t *testing.T) {
 		plan, err := PlanBulk(map[string]string{"s": unix(planSince), "u": unix(planNow.Add(400 * day))}, planNow)
 		if err != nil || !plan.Until.Equal(planNow) {

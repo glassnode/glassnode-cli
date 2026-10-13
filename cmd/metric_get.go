@@ -38,15 +38,18 @@ var metricGetCmd = &cobra.Command{
 
 		params := map[string]string{}
 
+		// One clock for the whole command: --since 31d then ends exactly 31
+		// days before the planned range's end, not a fraction of a second more.
+		now := time.Now().Truncate(time.Second)
 		if since != "" {
-			ts, err := timeparse.Parse(since)
+			ts, err := timeparse.ParseAt(since, now)
 			if err != nil {
 				return fmt.Errorf("parsing --since: %w", err)
 			}
 			params["s"] = fmt.Sprintf("%d", ts)
 		}
 		if until != "" {
-			ts, err := timeparse.Parse(until)
+			ts, err := timeparse.ParseAt(until, now)
 			if err != nil {
 				return fmt.Errorf("parsing --until: %w", err)
 			}
@@ -73,7 +76,7 @@ var metricGetCmd = &cobra.Command{
 
 			// The API requires s for bulk requests and limits the range per
 			// request; longer ranges are fetched in several requests with --split.
-			plan, err := api.PlanBulk(params, time.Now())
+			plan, err := api.PlanBulk(params, now)
 			if err != nil {
 				return err
 			}
