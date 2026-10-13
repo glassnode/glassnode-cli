@@ -297,7 +297,7 @@ OAuth session fields (`oauth-access-token`, `oauth-refresh-token`, `oauth-expire
 |------|-------|-------------|
 | `--api-key` | | Glassnode API key |
 | `--output` | `-o` | Output format: `json` (default), `csv`, `table` |
-| `--dry-run` | | Print the request URL without executing; the API key is sent in the `X-Api-Key` header and is not part of the URL |
+| `--dry-run` | | Print the endpoint and parameters of the request without sending it. The API key is sent in the `X-Api-Key` header and is not part of the URL. The URL is built from the flags, not by the SDK: metric requests are sent with `f=json` appended, and parameter validation (empty values, `--since` after `--until`) happens only when the request is sent |
 | `--timestamp-format` | | Timestamp format in output |
 
 ## Output Formats

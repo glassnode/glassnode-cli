@@ -7,9 +7,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// printDryRun prints the request URL that --dry-run would send. The credential
-// is sent in a header and is not part of the URL, which the note on stderr
-// says, so the URL on stdout stays usable in scripts.
+// printDryRun prints the endpoint and parameters --dry-run would send. The URL
+// is assembled from the flags rather than by the SDK, so it is a preview, not
+// the request byte for byte: the SDK appends f=json to metric requests and
+// validates parameters only when sending. The credential is sent in a header
+// and is not part of the URL, which the note on stderr says, so the URL on
+// stdout stays usable in scripts.
 func printDryRun(cmd *cobra.Command, client *api.Client, url string) {
 	fmt.Fprintln(cmd.OutOrStdout(), url)
 	fmt.Fprintf(cmd.ErrOrStderr(), "# credentials are sent in the %s header, not in the URL\n", client.AuthHeader())
