@@ -6,8 +6,8 @@ Please do not report security issues through public GitHub issues.
 
 Use GitHub's private vulnerability reporting instead: open the
 [Security tab](https://github.com/glassnode/glassnode-cli/security/advisories/new)
-of this repository and choose **Report a vulnerability**. The report reaches the
-maintainers listed in [CODEOWNERS](CODEOWNERS) only.
+of this repository and choose **Report a vulnerability**. Only the repository's
+administrators and security managers can see the report.
 
 If you can't use GitHub, email security@glassnode.com.
 

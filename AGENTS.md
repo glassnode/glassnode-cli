@@ -6,10 +6,14 @@ in its "Making a change" section.
 
 ## Don't
 
-- **Don't run `gn` against the live API to test a change.** Without
-  `--dry-run`, the `asset`, `metric` and `user` commands call the Glassnode API with the user's real
-  credentials and spends API credits. Use `--dry-run`, the tests, or
-  `GLASSNODE_BASE_URL` pointing at a local server.
+- **Don't run `gn` against the live API to test a change.** The `asset`,
+  `metric` and `user` commands call the Glassnode API with the user's real
+  credentials and spend API credits. Use the tests. `--dry-run` doesn't send the
+  request, but it resolves credentials first: it fails without them, and with a
+  stored OAuth session it may refresh the token against `auth.glassnode.com` and
+  rewrite `~/.gn/config.yaml`. Run it with a temporary `HOME` and
+  `GLASSNODE_API_KEY=x`. `GLASSNODE_BASE_URL` redirects API calls only, not
+  OAuth.
 - **Don't run `gn login`, `gn logout` or `gn config set`** outside a test with
   a temporary `HOME`: they open a browser or rewrite the user's
   `~/.gn/config.yaml`. In tests use `testhelper.WithTempHome`.

@@ -27,8 +27,10 @@ golangci-lint run ./...
 
 Tests run against local HTTP servers (`httptest`) and the recorded responses
 in `internal/api/testdata/`, so they need no API key and make no network
-requests. Running the `gn` binary itself does call the Glassnode API unless
-you pass `--dry-run` or point `GLASSNODE_BASE_URL` at a local server.
+requests. Running the `gn` binary itself calls the Glassnode API unless you
+pass `--dry-run` or point `GLASSNODE_BASE_URL` at a local server. Both still
+need credentials (`GLASSNODE_API_KEY=x` is enough for `--dry-run`), and a
+stored OAuth session may refresh its token against `auth.glassnode.com`.
 
 ## Making a change
 
