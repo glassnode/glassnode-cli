@@ -15,7 +15,7 @@ import (
 // stdout stays usable in scripts.
 func printDryRun(cmd *cobra.Command, client *api.Client, urls ...string) {
 	for _, url := range urls {
-		fmt.Fprintln(cmd.OutOrStdout(), url)
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), url)
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "# credentials are sent in the %s, not in the URL\n", client.AuthHeader())
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "# credentials are sent in the %s, not in the URL\n", client.AuthHeader())
 }

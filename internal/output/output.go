@@ -289,6 +289,7 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 // metadata table. A daily allowance counts requests, a monthly one credits;
 // usage is unknown when the period is not one the CLI knows.
 func printCreditsTable(w io.Writer, s api.CreditsSummary) error {
+	var b strings.Builder
 	unit := "credits"
 	switch s.CreditsPeriod {
 	case api.CreditsPeriodDaily:
@@ -297,15 +298,16 @@ func printCreditsTable(w io.Writer, s api.CreditsSummary) error {
 	default:
 		unit = ""
 	}
-	fmt.Fprintf(w, "Period: %s\n", s.CreditsPeriod)
-	fmt.Fprintf(w, "Limit:  %s\n", strings.TrimSpace(fmt.Sprintf("%d %s", s.CreditsLimit, unit)))
+	fmt.Fprintf(&b, "Period: %s\n", s.CreditsPeriod)
+	fmt.Fprintf(&b, "Limit:  %s\n", strings.TrimSpace(fmt.Sprintf("%d %s", s.CreditsLimit, unit)))
 	if s.CreditsUsed == nil || s.CreditsLeft == nil {
-		fmt.Fprintln(w, "Used:   unknown for this period")
-		return nil
+		fmt.Fprintln(&b, "Used:   unknown for this period")
+	} else {
+		fmt.Fprintf(&b, "Used:   %d\n", *s.CreditsUsed)
+		fmt.Fprintf(&b, "Left:   %d\n", *s.CreditsLeft)
 	}
-	fmt.Fprintf(w, "Used:   %d\n", *s.CreditsUsed)
-	fmt.Fprintf(w, "Left:   %d\n", *s.CreditsLeft)
-	return nil
+	_, err := io.WriteString(w, b.String())
+	return err
 }
 
 func optionalInt(n *int) string {

@@ -151,19 +151,19 @@ func bulkServer(t *testing.T, maxRange time.Duration, failAt int) (*httptest.Ser
 		windows = append(windows, Window{since, until})
 		if until.Sub(since) > maxRange {
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, `{"message":"too large time range (%s) requested (maximum allowed is %s)"}`, until.Sub(since), maxRange)
+			_, _ = fmt.Fprintf(w, `{"message":"too large time range (%s) requested (maximum allowed is %s)"}`, until.Sub(since), maxRange)
 			return
 		}
 		if n == failAt {
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprint(w, `{"message":"metric not in your plan"}`)
+			_, _ = fmt.Fprint(w, `{"message":"metric not in your plan"}`)
 			return
 		}
 		var points []string
 		for day := since.Truncate(24 * time.Hour); day.Add(24*time.Hour).Compare(until) <= 0; day = day.Add(24 * time.Hour) {
 			points = append(points, fmt.Sprintf(`{"t":%d,"bulk":[{"a":"BTC","v":1}]}`, day.Unix()))
 		}
-		fmt.Fprintf(w, `{"data":[%s]}`, strings.Join(points, ","))
+		_, _ = fmt.Fprintf(w, `{"data":[%s]}`, strings.Join(points, ","))
 	}))
 	t.Cleanup(server.Close)
 	return server, &calls, &windows
@@ -255,10 +255,10 @@ func TestGetMetricBulkSplitKeepsLaterPointOnOverlap(t *testing.T) {
 		boundary := planSince.Add(day).Unix()
 		if calls.Add(1) == 1 {
 			// The first window wrongly repeats the boundary point with one entry.
-			fmt.Fprintf(w, `{"data":[{"t":%d,"bulk":[{"a":"BTC","v":1}]},{"t":%d,"bulk":[{"a":"BTC","v":2}]}]}`, planSince.Unix(), boundary)
+			_, _ = fmt.Fprintf(w, `{"data":[{"t":%d,"bulk":[{"a":"BTC","v":1}]},{"t":%d,"bulk":[{"a":"BTC","v":2}]}]}`, planSince.Unix(), boundary)
 			return
 		}
-		fmt.Fprintf(w, `{"data":[{"t":%d,"bulk":[{"a":"BTC","v":2},{"a":"ETH","v":3}]}]}`, boundary)
+		_, _ = fmt.Fprintf(w, `{"data":[{"t":%d,"bulk":[{"a":"BTC","v":2},{"a":"ETH","v":3}]}]}`, boundary)
 	}))
 	t.Cleanup(server.Close)
 	resp, err := newTestClient(server).GetMetricBulkSplit(context.Background(), "/market/price", map[string]string{"s": unix(plan.Since)}, nil, plan, nil)
