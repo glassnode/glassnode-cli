@@ -7,14 +7,16 @@ change into the project.
 
 Open an [issue](https://github.com/glassnode/glassnode-cli/issues). For bugs,
 include the output of `gn --version`, your OS, the command you ran and the
-error message. `--dry-run` shows the request URL with the API key redacted;
-check that nothing you paste contains an API key or token.
+error message. `--dry-run` prints the request URL; the API key is sent in a
+header and never appears in it. Check that nothing you paste contains an API
+key or token.
 
 Security issues go through [SECURITY.md](SECURITY.md), not the issue tracker.
 
 ## Development setup
 
-You need Go 1.24 or later and [golangci-lint](https://golangci-lint.run) v2.
+You need Go 1.24 or later and [golangci-lint](https://golangci-lint.run) v2.14 (the version CI
+pins; the config is `.golangci.yml`).
 
 ```sh
 git clone https://github.com/glassnode/glassnode-cli
@@ -48,8 +50,10 @@ stored OAuth session may refresh its token against `auth.glassnode.com`.
 6. Open a pull request against `main`. Describe what changes for a user of
    the CLI and why.
 
-CI runs `go vet`, the build and the tests (`test` job) and golangci-lint
-(`lint` job) on every pull request and on `main`. A maintainer listed in
+CI runs `go vet`, the build and the tests with the Go version in `go.mod`
+(`test` job), the tests with the newest stable Go that releases are built with
+(`test-stable` job) and golangci-lint (`lint` job) on every pull request and on
+`main`. A maintainer listed in
 [CODEOWNERS](CODEOWNERS) reviews every pull request; once approved, the author
 merges.
 

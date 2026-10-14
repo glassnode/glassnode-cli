@@ -27,6 +27,20 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+  # Releases build with the newest stable Go (release.yml), so the tests run on it too. A separate
+  # job keeps the required `test` check's name.
+  test-stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+
+      - name: Test
+        run: go test -race ./...
+
   lint:
     runs-on: ubuntu-latest
     steps:

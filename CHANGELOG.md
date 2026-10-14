@@ -2,8 +2,37 @@
 
 ## Unreleased
 
-- `gn metric describe -o table` reports an error when writing the output
-  fails instead of ignoring it.
+Breaking changes:
+
+- `gn user credits` reports the allowance per its period: `creditsPerMonth` is
+  replaced by `creditsLimit` and `creditsPeriod` (`daily` or `monthly`), and
+  `creditsUsed`/`creditsLeft` count the same period (requests per day on a
+  daily allowance, credits this month on a monthly one). For an unknown or
+  mixed period, `creditsPeriod` carries what the API sent and
+  `creditsUsed`/`creditsLeft` are omitted.
+- Bulk `gn metric get` requires `--since`, also with `--dry-run`, and rejects
+  a range over the API's per-request limit (10 days at `10m`/`1h`, 31 at
+  `24h`, 93 at `1w`/`1month`, counted from the start of the interval
+  containing `--since`) before sending anything.
+- The API key is sent in the `X-Api-Key` header instead of the URL, so
+  `--dry-run` URLs no longer contain it.
+- `gn metric list --format` is removed: the API's filter never returned any
+  metrics. The hidden flag fails with an explanation for this release.
+
+Other changes:
+
+- New `--split` flag for bulk `gn metric get`: fetches a longer range in
+  several requests and merges the points.
+- `gn user credits -o table` and `-o csv` print the summary instead of JSON.
+- Point-in-time metrics show `computed_at` (a JSON field, and a trailing
+  CSV/table column when present).
+- CSV and table output print numbers in plain decimal notation instead of
+  `1.7382414210210708e+12`.
+- `gn metric describe -o table` lists the parameters in sorted order.
+- `gn metric describe -o table`, `gn user credits -o table` and `--dry-run`
+  report an error when writing the output fails instead of ignoring it.
+- API requests go through the Glassnode Go SDK (`glassnode-api-go-client`);
+  redirects are no longer followed.
 
 ## v0.6.0 — 2026-08-28
 

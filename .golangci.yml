@@ -1,0 +1,6 @@
+# golangci-lint v2 configuration; CI pins the version in .github/workflows/test.yml.
+version: "2"
+
+linters:
+  # errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
