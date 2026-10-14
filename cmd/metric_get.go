@@ -97,8 +97,7 @@ var metricGetCmd = &cobra.Command{
 					}
 					urls = append(urls, u)
 				}
-				printDryRun(cmd, client, urls...)
-				return nil
+				return printDryRun(cmd, client, urls...)
 			}
 			if len(windows) > 1 {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe(len(windows)))
@@ -144,8 +143,7 @@ var metricGetCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			printDryRun(cmd, client, u)
-			return nil
+			return printDryRun(cmd, client, u)
 		}
 
 		data, err := client.GetMetric(cmd.Context(), path, params)

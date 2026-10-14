@@ -32,8 +32,7 @@ func runNamesListCommand(cmd *cobra.Command, endpoint string, withFilter bool) e
 		if err != nil {
 			return err
 		}
-		printDryRun(cmd, client, u)
-		return nil
+		return printDryRun(cmd, client, u)
 	}
 
 	names, err := client.ListNames(cmd.Context(), endpoint, filter)
