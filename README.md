@@ -367,6 +367,8 @@ go build -o gn .
 go test ./...
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for linting, the changelog and releases.
+
 ## License
 
 [Apache-2.0](LICENSE)

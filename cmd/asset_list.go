@@ -50,8 +50,7 @@ var assetListCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			printDryRun(cmd, client, u)
-			return nil
+			return printDryRun(cmd, client, u)
 		}
 
 		assets, err := client.ListAssets(cmd.Context(), filter)

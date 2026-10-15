@@ -24,8 +24,7 @@ var creditsCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			printDryRun(cmd, client, u)
-			return nil
+			return printDryRun(cmd, client, u)
 		}
 
 		resp, err := client.GetAPIUsage(cmd.Context())

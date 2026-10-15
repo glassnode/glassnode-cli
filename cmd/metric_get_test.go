@@ -181,7 +181,7 @@ func TestMetricGet_Bulk_WithoutSplitSendsOneRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"message":"too large time range (744h0m0s) requested (maximum allowed is 240h0m0s)"}`)
+		_, _ = fmt.Fprint(w, `{"message":"too large time range (744h0m0s) requested (maximum allowed is 240h0m0s)"}`)
 	}))
 	t.Cleanup(server.Close)
 	_, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir(), "GLASSNODE_BASE_URL=" + server.URL},
@@ -211,7 +211,7 @@ func TestMetricGet_Bulk_WithoutSplitSendsPlannedBounds(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		until = r.URL.Query().Get("u")
-		fmt.Fprint(w, `{"data":[]}`)
+		_, _ = fmt.Fprint(w, `{"data":[]}`)
 	}))
 	t.Cleanup(server.Close)
 	_, stderr, err := runCLI(t, []string{"HOME=" + t.TempDir(), "GLASSNODE_BASE_URL=" + server.URL},

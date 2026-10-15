@@ -289,6 +289,7 @@ func PrintTable(w io.Writer, data interface{}, timestampFormat string) error {
 // metadata table. A daily allowance counts requests, a monthly one credits;
 // usage is unknown when the period is not one the CLI knows.
 func printCreditsTable(w io.Writer, s api.CreditsSummary) error {
+	var b strings.Builder
 	unit := "credits"
 	switch s.CreditsPeriod {
 	case api.CreditsPeriodDaily:
@@ -297,15 +298,16 @@ func printCreditsTable(w io.Writer, s api.CreditsSummary) error {
 	default:
 		unit = ""
 	}
-	fmt.Fprintf(w, "Period: %s\n", s.CreditsPeriod)
-	fmt.Fprintf(w, "Limit:  %s\n", strings.TrimSpace(fmt.Sprintf("%d %s", s.CreditsLimit, unit)))
+	fmt.Fprintf(&b, "Period: %s\n", s.CreditsPeriod)
+	fmt.Fprintf(&b, "Limit:  %s\n", strings.TrimSpace(fmt.Sprintf("%d %s", s.CreditsLimit, unit)))
 	if s.CreditsUsed == nil || s.CreditsLeft == nil {
-		fmt.Fprintln(w, "Used:   unknown for this period")
-		return nil
+		fmt.Fprintln(&b, "Used:   unknown for this period")
+	} else {
+		fmt.Fprintf(&b, "Used:   %d\n", *s.CreditsUsed)
+		fmt.Fprintf(&b, "Left:   %d\n", *s.CreditsLeft)
 	}
-	fmt.Fprintf(w, "Used:   %d\n", *s.CreditsUsed)
-	fmt.Fprintf(w, "Left:   %d\n", *s.CreditsLeft)
-	return nil
+	_, err := io.WriteString(w, b.String())
+	return err
 }
 
 func optionalInt(n *int) string {
@@ -316,34 +318,36 @@ func optionalInt(n *int) string {
 }
 
 func printMetricMetadataTable(w io.Writer, m *api.MetricMetadata) error {
-	fmt.Fprintf(w, "Path:           %s\n", m.Path)
-	fmt.Fprintf(w, "Tier:           %d\n", m.Tier)
-	fmt.Fprintf(w, "Bulk Supported: %t\n", m.BulkSupported)
-	fmt.Fprintf(w, "PIT:            %t\n", m.IsPIT)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Path:           %s\n", m.Path)
+	fmt.Fprintf(&b, "Tier:           %d\n", m.Tier)
+	fmt.Fprintf(&b, "Bulk Supported: %t\n", m.BulkSupported)
+	fmt.Fprintf(&b, "PIT:            %t\n", m.IsPIT)
 	if m.Descriptors != nil {
 		if m.Descriptors.Name != "" {
-			fmt.Fprintf(w, "Name:           %s\n", m.Descriptors.Name)
+			fmt.Fprintf(&b, "Name:           %s\n", m.Descriptors.Name)
 		}
 		if m.Descriptors.Group != "" {
-			fmt.Fprintf(w, "Group:          %s\n", m.Descriptors.Group)
+			fmt.Fprintf(&b, "Group:          %s\n", m.Descriptors.Group)
 		}
 		if len(m.Descriptors.Tags) > 0 {
-			fmt.Fprintf(w, "Tags:           %s\n", strings.Join(m.Descriptors.Tags, ", "))
+			fmt.Fprintf(&b, "Tags:           %s\n", strings.Join(m.Descriptors.Tags, ", "))
 		}
 	}
 	if m.TimeRange != nil {
-		fmt.Fprintf(w, "Timerange:      %d - %d\n", m.TimeRange.Min, m.TimeRange.Max)
+		fmt.Fprintf(&b, "Timerange:      %d - %d\n", m.TimeRange.Min, m.TimeRange.Max)
 	}
 	if len(m.Parameters) > 0 {
-		fmt.Fprintln(w, "Parameters:")
-		for k, vals := range m.Parameters {
-			fmt.Fprintf(w, "  %s: %s\n", k, strings.Join(vals, ", "))
+		fmt.Fprintln(&b, "Parameters:")
+		for _, k := range sortedKeys(m.Parameters) {
+			fmt.Fprintf(&b, "  %s: %s\n", k, strings.Join(m.Parameters[k], ", "))
 		}
 	}
-	return nil
+	_, err := io.WriteString(w, b.String())
+	return err
 }
 
-func sortedKeys(m map[string]interface{}) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

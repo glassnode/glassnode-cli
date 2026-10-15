@@ -97,11 +97,10 @@ var metricGetCmd = &cobra.Command{
 					}
 					urls = append(urls, u)
 				}
-				printDryRun(cmd, client, urls...)
-				return nil
+				return printDryRun(cmd, client, urls...)
 			}
 			if len(windows) > 1 {
-				fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe(len(windows)))
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), plan.Describe(len(windows)))
 			}
 
 			// --split is the only consent to more than one request: without it
@@ -129,7 +128,7 @@ var metricGetCmd = &cobra.Command{
 		if split, _ := cmd.Flags().GetBool("split"); split {
 			// Base metrics have no per-request range limit, so there is nothing
 			// to split; say so rather than fail a script that shares its flags.
-			fmt.Fprintln(cmd.ErrOrStderr(), "--split applies to bulk paths only and was ignored")
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "--split applies to bulk paths only and was ignored")
 		}
 		if len(assets) > 0 {
 			params["a"] = assets[0]
@@ -144,8 +143,7 @@ var metricGetCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			printDryRun(cmd, client, u)
-			return nil
+			return printDryRun(cmd, client, u)
 		}
 
 		data, err := client.GetMetric(cmd.Context(), path, params)

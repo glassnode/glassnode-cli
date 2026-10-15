@@ -215,7 +215,7 @@ func (c *Client) GetMetricBulkSplit(ctx context.Context, path string, params map
 		w := windows[0]
 		// One line per window: each goes through the SDK's retries and may
 		// wait on a rate limit, so a long split fetch should not fall silent.
-		fmt.Fprintf(progress, "window %d/%d %s..%s\n", fetched+1, fetched+len(windows), formatBound(w.Since), formatBound(w.Until))
+		_, _ = fmt.Fprintf(progress, "window %d/%d %s..%s\n", fetched+1, fetched+len(windows), formatBound(w.Since), formatBound(w.Until))
 		resp, err := c.GetMetricBulk(ctx, path, WindowParams(params, w), repeated)
 		if err != nil {
 			// Halve the range the API actually rejected: near the end of the
